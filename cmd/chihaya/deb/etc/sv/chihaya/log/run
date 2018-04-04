@@ -1,0 +1,3 @@
+#!/bin/bash -e
+
+exec multilog s15728640 n200 /var/log/chihaya

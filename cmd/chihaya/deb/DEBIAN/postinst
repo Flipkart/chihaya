@@ -1,0 +1,6 @@
+#!/bin/bash -e
+
+if [ "$1" == "configure" ]; then
+    mkdir -p /var/log/chihaya
+    ln -s /etc/sv/chihaya /etc/service/chihaya
+fi

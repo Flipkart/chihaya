@@ -1,0 +1,7 @@
+#!/bin/bash -e
+
+if [ -L /etc/service/chihaya ]; then
+    svc -dx /etc/service/chihaya
+    svc -dx /etc/service/chihaya/log
+    unlink /etc/service/chihaya
+fi

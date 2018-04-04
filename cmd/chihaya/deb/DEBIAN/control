@@ -1,0 +1,8 @@
+Package: _PACKAGE_
+Version: _VERSION_
+Architecture: all
+Section: flipkart/infra
+Priority: standard
+Maintainer: service-model-dev@flipkart.com
+Depends: daemontools,daemontools-run 
+Description: Bittorrent Tracker
