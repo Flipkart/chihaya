@@ -18,7 +18,7 @@ import (
 	"github.com/chihaya/chihaya/pkg/log"
 	"github.com/chihaya/chihaya/pkg/prometheus"
 	"github.com/chihaya/chihaya/pkg/stop"
-	"github.com/chihaya/chihaya/storage"
+	"github.com/Flipkart/chihaya/storage"
 )
 
 // Run represents the state of a running instance of Chihaya.

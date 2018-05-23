@@ -17,8 +17,8 @@ import (
 	_ "github.com/chihaya/chihaya/middleware/varinterval"
 
 	// Imported to register as storage drivers.
-	_ "github.com/chihaya/chihaya/storage/memory"
-	_ "github.com/chihaya/chihaya/storage/memorybysubnet"
+	_ "github.com/Flipkart/chihaya/storage/memory"
+	_ "github.com/Flipkart/chihaya/storage/memorybysubnet"
 )
 
 type storageConfig struct {

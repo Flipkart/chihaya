@@ -15,7 +15,7 @@ import (
 	"github.com/chihaya/chihaya/bittorrent"
 	"github.com/chihaya/chihaya/pkg/log"
 	"github.com/chihaya/chihaya/pkg/timecache"
-	"github.com/chihaya/chihaya/storage"
+	"github.com/Flipkart/chihaya/storage"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.
@@ -704,6 +704,10 @@ func (ps *peerStore) collectGarbage(cutoff time.Time) error {
 
 	recordGCDuration(time.Since(start))
 
+	return nil
+}
+
+func (ps *peerStore) Bootstrap(...interface{}) error {
 	return nil
 }
 

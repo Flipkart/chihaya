@@ -14,7 +14,8 @@ import (
 	"github.com/chihaya/chihaya/bittorrent"
 	"github.com/chihaya/chihaya/pkg/log"
 	"github.com/chihaya/chihaya/pkg/timecache"
-	"github.com/chihaya/chihaya/storage"
+	"github.com/Flipkart/chihaya/storage"
+	"fmt"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.
@@ -167,6 +168,10 @@ func New(provided Config) (storage.PeerStore, error) {
 	return ps, nil
 }
 
+func NewAnnounce(ih *bittorrent.InfoHash, pk []byte, seeder bool, clock int64) (Announce) {
+	return Announce{ih, pk, seeder, clock}
+}
+
 type serializedPeer string
 
 func newPeerKey(p bittorrent.Peer) serializedPeer {
@@ -194,6 +199,13 @@ func decodePeerKey(pk serializedPeer) bittorrent.Peer {
 	}
 
 	return peer
+}
+
+type Announce struct {
+	ih     	*bittorrent.InfoHash
+	pk     	[]byte
+	seeder 	bool
+	clock	int64
 }
 
 type peerShard struct {
@@ -505,6 +517,51 @@ func (ps *peerStore) ScrapeSwarm(ih bittorrent.InfoHash, addressFamily bittorren
 	shard.RUnlock()
 
 	return
+}
+
+// loads announces in-memory
+func (ps *peerStore) Bootstrap(announces ...interface{}) error {
+	cutoff := time.Now().Add(-ps.cfg.PeerLifetime).UnixNano()
+	for _, entry := range announces {
+		a, ok := entry.(Announce)
+		if !ok {
+			return fmt.Errorf("expected values of type storage.memory.Announce")
+		}
+
+		// Ignore expired announces
+		if a.clock <= cutoff {
+			continue
+		}
+
+		pk := serializedPeer(a.pk)
+		ih := *a.ih
+		p := decodePeerKey(pk)
+		shard := ps.shards[ps.shardIndex(ih, p.IP.AddressFamily)]
+
+		if _, ok := shard.swarms[ih]; !ok {
+			shard.swarms[ih] = swarm{
+				seeders:  make(map[serializedPeer]int64),
+				leechers: make(map[serializedPeer]int64),
+			}
+		}
+
+		if a.seeder {
+			if _, ok := shard.swarms[ih].seeders[pk]; !ok {
+				shard.numSeeders++
+			}
+			shard.swarms[ih].seeders[pk] = a.clock
+		} else {
+			if _, ok := shard.swarms[ih].leechers[pk]; !ok {
+				shard.numLeechers++
+			}
+			shard.swarms[ih].leechers[pk] = a.clock
+		}
+	}
+
+	// Garbage collect peers that are timed out already and publish metrics
+	ps.collectGarbage(time.Now().Add(-ps.cfg.PeerLifetime))
+	ps.populateProm()
+	return nil
 }
 
 // collectGarbage deletes all Peers from the PeerStore which are older than the
