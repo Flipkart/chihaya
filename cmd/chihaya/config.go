@@ -7,14 +7,14 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/chihaya/chihaya/frontend/http"
-	"github.com/chihaya/chihaya/frontend/udp"
-	"github.com/chihaya/chihaya/middleware"
+	"github.com/Flipkart/chihaya/frontend/http"
+	"github.com/Flipkart/chihaya/frontend/udp"
+	"github.com/Flipkart/chihaya/middleware"
 
 	// Imported to register as middleware drivers.
-	_ "github.com/chihaya/chihaya/middleware/clientapproval"
-	_ "github.com/chihaya/chihaya/middleware/jwt"
-	_ "github.com/chihaya/chihaya/middleware/varinterval"
+	_ "github.com/Flipkart/chihaya/middleware/clientapproval"
+	_ "github.com/Flipkart/chihaya/middleware/jwt"
+	_ "github.com/Flipkart/chihaya/middleware/varinterval"
 
 	// Imported to register as storage drivers.
 	_ "github.com/Flipkart/chihaya/storage/memory"

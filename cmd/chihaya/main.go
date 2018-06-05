@@ -12,12 +12,12 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/chihaya/chihaya/frontend/http"
-	"github.com/chihaya/chihaya/frontend/udp"
-	"github.com/chihaya/chihaya/middleware"
-	"github.com/chihaya/chihaya/pkg/log"
-	"github.com/chihaya/chihaya/pkg/prometheus"
-	"github.com/chihaya/chihaya/pkg/stop"
+	"github.com/Flipkart/chihaya/frontend/http"
+	"github.com/Flipkart/chihaya/frontend/udp"
+	"github.com/Flipkart/chihaya/middleware"
+	"github.com/Flipkart/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/prometheus"
+	"github.com/Flipkart/chihaya/pkg/stop"
 	"github.com/Flipkart/chihaya/storage"
 )
 

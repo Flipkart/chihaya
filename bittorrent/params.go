@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/chihaya/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/log"
 )
 
 // Params is used to fetch (optional) request parameters from an Announce.
