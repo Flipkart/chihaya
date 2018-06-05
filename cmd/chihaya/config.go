@@ -19,6 +19,8 @@ import (
 	// Imported to register as storage drivers.
 	_ "github.com/Flipkart/chihaya/storage/memory"
 	_ "github.com/Flipkart/chihaya/storage/memorybysubnet"
+	//_ "github.com/Flipkart/chihaya/storage/memetcd"
+	"github.com/coreos/etcd/clientv3"
 )
 
 type storageConfig struct {
@@ -35,6 +37,7 @@ type Config struct {
 	Storage                   storageConfig           `yaml:"storage"`
 	PreHooks                  []middleware.HookConfig `yaml:"prehooks"`
 	PostHooks                 []middleware.HookConfig `yaml:"posthooks"`
+	EtcdConfig 				  clientv3.Config		  `yaml:"etcd_config"`
 }
 
 // PreHookNames returns only the names of the configured middleware.
