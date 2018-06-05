@@ -23,10 +23,10 @@ import (
 	"github.com/mendsley/gojwk"
 	"gopkg.in/yaml.v2"
 
-	"github.com/chihaya/chihaya/bittorrent"
-	"github.com/chihaya/chihaya/middleware"
-	"github.com/chihaya/chihaya/pkg/log"
-	"github.com/chihaya/chihaya/pkg/stop"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/middleware"
+	"github.com/Flipkart/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/stop"
 )
 
 // Name is the name by which this middleware is registered with Chihaya.

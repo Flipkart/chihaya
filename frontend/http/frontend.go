@@ -12,9 +12,9 @@ import (
 	"github.com/julienschmidt/httprouter"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/chihaya/chihaya/bittorrent"
-	"github.com/chihaya/chihaya/frontend"
-	"github.com/chihaya/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/frontend"
+	"github.com/Flipkart/chihaya/pkg/log"
 )
 
 func init() {

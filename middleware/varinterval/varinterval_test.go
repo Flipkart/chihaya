@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/chihaya/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/bittorrent"
 	"github.com/stretchr/testify/require"
 )
 

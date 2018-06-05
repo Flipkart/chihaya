@@ -7,8 +7,8 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/chihaya/chihaya/bittorrent"
-	"github.com/chihaya/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/pkg/log"
 	"github.com/Flipkart/chihaya/storage"
 	"github.com/coreos/etcd/clientv3"
 	"strings"
@@ -17,7 +17,7 @@ import (
 	"time"
 	"fmt"
 	"github.com/coreos/etcd/clientv3/namespace"
-	"github.com/chihaya/chihaya/pkg/timecache"
+	"github.com/Flipkart/chihaya/pkg/timecache"
 	"strconv"
 )
 

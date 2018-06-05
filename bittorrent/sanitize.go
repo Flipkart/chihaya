@@ -3,7 +3,7 @@ package bittorrent
 import (
 	"net"
 
-	"github.com/chihaya/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/log"
 )
 
 // ErrInvalidIP indicates an invalid IP for an Announce.

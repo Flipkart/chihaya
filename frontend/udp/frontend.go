@@ -14,12 +14,12 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/chihaya/chihaya/bittorrent"
-	"github.com/chihaya/chihaya/frontend"
-	"github.com/chihaya/chihaya/frontend/udp/bytepool"
-	"github.com/chihaya/chihaya/pkg/log"
-	"github.com/chihaya/chihaya/pkg/stop"
-	"github.com/chihaya/chihaya/pkg/timecache"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/frontend"
+	"github.com/Flipkart/chihaya/frontend/udp/bytepool"
+	"github.com/Flipkart/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/stop"
+	"github.com/Flipkart/chihaya/pkg/timecache"
 )
 
 var allowedGeneratedPrivateKeyRunes = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890")

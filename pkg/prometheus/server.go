@@ -6,7 +6,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/chihaya/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
