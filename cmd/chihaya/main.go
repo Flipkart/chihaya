@@ -19,11 +19,8 @@ import (
 	"github.com/Flipkart/chihaya/pkg/prometheus"
 	"github.com/Flipkart/chihaya/pkg/stop"
 	"github.com/Flipkart/chihaya/storage"
-	"github.com/coreos/etcd/clientv3"
-	"github.com/coreos/etcd/clientv3/concurrency"
+	"github.com/Flipkart/chihaya/availability/etcdfailover"
 	"fmt"
-	"sync"
-	"context"
 )
 
 // Run represents the state of a running instance of Chihaya.
@@ -43,135 +40,49 @@ func NewRun(configFilePath string) (*Run, error) {
 	return r, r.Init(nil)
 }
 
-type electionManager struct {
-	cli				*clientv3.Client
-	electionPfx 	string
-	session			*concurrency.Session
-	cancel			context.CancelFunc
-	wg				sync.WaitGroup
-	state			ElectionState
-	evt				chan ElectionState
-}
-
-type ElectionState string
-const (
-	NOT_PARTICIPANT 	ElectionState = "NOT_PARTICIPANT"
-	PARTICIPANT 		ElectionState = "PARTICIPANT"
-	LEADER 				ElectionState = "LEADER"
-	FAILED_PARTICIPANT	ElectionState = "FAILED_PARTICIPANT"
-)
-
-const defaultEtcdEndpoint = "127.0.0.1:2379"
-
-func NewElectionManager(cfg clientv3.Config, electionPrefix string) (*electionManager, error) {
-	if len(cfg.Endpoints) == 0 {
-		cfg.Endpoints = []string{"127.0.0.1:2379"}
-		log.Warn("falling back to default configuration for etcd endpoint: " + cfg.Endpoints[0])
-	}
-
-	cli, err := clientv3.New(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to setup etcd client: %v", err)
-	}
-
-	return &electionManager{
-		cli: cli,
-		electionPfx: electionPrefix,
-		state: NOT_PARTICIPANT,
-		evt: make(chan ElectionState, 1),
-	}, nil
-}
-
-func (em *electionManager) Start() error {
-	var err error
-	em.session, err = concurrency.NewSession(em.cli)
-	if err != nil {
-		return fmt.Errorf("failed to create session: %v", err)
-	}
-
-	election := concurrency.NewElection(em.session, em.electionPfx)
-	em.setState(PARTICIPANT)
-	em.wg.Add(1)
-
-	go func() {
-		defer em.wg.Done()
-
-		cctx, cancel := context.WithCancel(context.Background())
-		em.cancel = cancel
-		if err := election.Campaign(cctx, ""); err != nil {
-			em.setState(FAILED_PARTICIPANT)
-		} else {
-			em.setState(LEADER)
-		}
-	}()
-	return nil
-}
-
-func (em *electionManager) Stop() error {
-	em.cancel()
-	em.wg.Wait()
-
-	if err := em.session.Close(); err != nil {
-		return err
-	}
-	if err := em.cli.Close(); err != nil {
-		return err
-	}
-
-	close(em.evt)
-	return nil
-}
-
-func (em *electionManager) setState(newState ElectionState) {
-	em.state = newState
-	em.evt <- em.state
-}
-
 func (r *Run) Init(ps storage.PeerStore) error {
 	configFile, err := ParseConfigFile(r.configFilePath)
 	if err != nil {
 		return errors.New("failed to read config: " + err.Error())
 	}
 	cfg := configFile.Chihaya
+	r.sg = stop.NewGroup()
 
-	em, err := NewElectionManager(cfg.EtcdConfig, "/tracker-election")
-	if err != nil {
-		return err
+	runnable := func() error {
+		return r.Start(cfg, ps)
 	}
 
-	if err = em.Start(); err != nil {
-		return err
-	}
-	for evt := range em.evt {
-		switch(evt) {
-		case PARTICIPANT:
-			log.Info("tracker is eligible to become leader. Going to participate in election")
-		case NOT_PARTICIPANT:
-			return errors.New("should call election manager start")
-		case FAILED_PARTICIPANT:
-			return errors.New("failed to participate in election")
-		case LEADER:
-			r.Start(ps)
+	switch cfg.AvailabilityConfig.Name {
+	case "etcdfailover":
+		em, err := etcdfailover.NewElectionManager(cfg.AvailabilityConfig.Config)
+		if err != nil {
+			return err
 		}
+		errChan, stopper, err := em.Run(runnable)
+		if err != nil {
+			return err
+		}
+		r.sg.AddFunc(stopper)
+		go func() {
+			err := <-errChan
+			log.Error(fmt.Sprintf("%v: sending sigint to self", err))
+			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+		}()
+	default:
+		return runnable()
 	}
+
 	return nil
 }
 
 // Start begins an instance of Chihaya.
 // It is optional to provide an instance of the peer store to avoid the
 // creation of a new one.
-func (r *Run) Start(ps storage.PeerStore) error {
-	configFile, err := ParseConfigFile(r.configFilePath)
-	if err != nil {
-		return errors.New("failed to read config: " + err.Error())
-	}
-	cfg := configFile.Chihaya
-
-	r.sg = stop.NewGroup()
-
+func (r *Run) Start(cfg Config, ps storage.PeerStore) error {
 	log.Info("starting Prometheus server", log.Fields{"addr": cfg.PrometheusAddr})
 	r.sg.Add(prometheus.NewServer(cfg.PrometheusAddr))
 
+	var err error
 	if ps == nil {
 		log.Info("starting storage", log.Fields{"name": cfg.Storage.Name})
 		ps, err = storage.NewPeerStore(cfg.Storage.Name, cfg.Storage.Config)
@@ -215,8 +126,6 @@ func (r *Run) Start(ps storage.PeerStore) error {
 		r.sg.Add(udpfe)
 	}
 
-
-
 	return nil
 }
 
@@ -231,17 +140,19 @@ func combineErrors(prefix string, errs []error) error {
 
 // Stop shuts down an instance of Chihaya.
 func (r *Run) Stop(keepPeerStore bool) (storage.PeerStore, error) {
-	log.Debug("stopping frontends and prometheus endpoint")
+	log.Debug("stopping availability manager, frontends and prometheus endpoint")
 	if errs := r.sg.Stop(); len(errs) != 0 {
 		return nil, combineErrors("failed while shutting down frontends", errs)
 	}
 
-	log.Debug("stopping logic")
-	if errs := r.logic.Stop(); len(errs) != 0 {
-		return nil, combineErrors("failed while shutting down middleware", errs)
+	if r.logic != nil {
+		log.Debug("stopping logic")
+		if errs := r.logic.Stop(); len(errs) != 0 {
+			return nil, combineErrors("failed while shutting down middleware", errs)
+		}
 	}
 
-	if !keepPeerStore {
+	if !keepPeerStore && r.peerStore != nil {
 		log.Debug("stopping peer store")
 		if err, closed := <-r.peerStore.Stop(); !closed {
 			return nil, err
@@ -265,6 +176,8 @@ func RunCmdFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+
+	log.Debug("attaching signal handlers")
 	quit := make(chan os.Signal)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 

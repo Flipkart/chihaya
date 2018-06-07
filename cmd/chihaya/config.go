@@ -19,8 +19,7 @@ import (
 	// Imported to register as storage drivers.
 	_ "github.com/Flipkart/chihaya/storage/memory"
 	_ "github.com/Flipkart/chihaya/storage/memorybysubnet"
-	//_ "github.com/Flipkart/chihaya/storage/memetcd"
-	"github.com/coreos/etcd/clientv3"
+	_ "github.com/Flipkart/chihaya/storage/memetcd"
 )
 
 type storageConfig struct {
@@ -28,16 +27,21 @@ type storageConfig struct {
 	Config interface{} `yaml:"config"`
 }
 
+type availabilityConfig struct {
+	Name	string	`yaml:"name"`
+	Config	interface{}	`yaml:"config"`
+}
+
 // Config represents the configuration used for executing Chihaya.
 type Config struct {
-	middleware.ResponseConfig `yaml:",inline"`
-	PrometheusAddr            string                  `yaml:"prometheus_addr"`
-	HTTPConfig                http.Config             `yaml:"http"`
-	UDPConfig                 udp.Config              `yaml:"udp"`
-	Storage                   storageConfig           `yaml:"storage"`
-	PreHooks                  []middleware.HookConfig `yaml:"prehooks"`
-	PostHooks                 []middleware.HookConfig `yaml:"posthooks"`
-	EtcdConfig 				  clientv3.Config		  `yaml:"etcd_config"`
+	middleware.ResponseConfig                  `yaml:",inline"`
+	PrometheusAddr     string                  `yaml:"prometheus_addr"`
+	HTTPConfig         http.Config             `yaml:"http"`
+	UDPConfig          udp.Config              `yaml:"udp"`
+	Storage            storageConfig           `yaml:"storage"`
+	PreHooks           []middleware.HookConfig `yaml:"prehooks"`
+	PostHooks          []middleware.HookConfig `yaml:"posthooks"`
+	AvailabilityConfig availabilityConfig      `yaml:"availability"`
 }
 
 // PreHookNames returns only the names of the configured middleware.
