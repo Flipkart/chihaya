@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+// NOTE
+// Known Issues:
+// 1. 	If etcd cluster becomes unavailable, tracker nodes will take 2 * session_timeout_secs to shutdown cleanly
+
+
 type ElectionState string
 const (
 	NotParticipant    ElectionState = "NotParticipant"
@@ -32,30 +37,56 @@ func NewElectionManager(icfg interface{}) (*ElectionManager, error) {
 		return nil, err
 	}
 
-	return New(cfg)
+	return New(cfg), nil
 }
 
 type ElectionManager struct {
-	cfg      Config
-
-	cli      *clientv3.Client
-	session  *concurrency.Session
-	election *concurrency.Election
-	cancel   context.CancelFunc
-
-	mu		 sync.Mutex
-	state    ElectionState
-	evtChan  *SafeSendChan
+	cfg            Config
+	cli            *clientv3.Client
+	cliCreated     bool
+	session        *concurrency.Session
+	sessionCreated bool
+	election       *concurrency.Election
+	cancel         context.CancelFunc
+	mu             sync.Mutex
+	state          ElectionState
+	evtChan        *SafeSendChan
 }
 
-func New(provided Config) (*ElectionManager, error) {
-	cfg := provided.Validate()
+type ElectionManagerOption func(*ElectionManager)
 
-	return &ElectionManager{
+func WithEtcdClient(cli *clientv3.Client) ElectionManagerOption {
+	return func(em *ElectionManager) {
+		em.cli = cli
+	}
+}
+
+func WithEtcdSession(session *concurrency.Session) ElectionManagerOption {
+	return func(em *ElectionManager) {
+		em.session = session
+	}
+}
+
+func New(provided Config, opts ...ElectionManagerOption) *ElectionManager {
+	cfg := provided.Validate()
+	em := &ElectionManager{
 		cfg:    cfg,
 		cancel: func () {},
 		state:  NotParticipant,
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(em)
+	}
+
+	//if session is provided, etcd client is not required, hence etcd config not required
+	//if client is provided, etcd config is not required, session can be created from provided etcd client
+	//when session and client both are not provided, etcd config is required
+	if em.session == nil && em.cli == nil {
+		log.Warn("etcd client not provided, falling back to config.Etcd which will be used to create etcd client and session later")
+		em.cfg = em.cfg.ValidateEtcdConfig()
+	}
+
+	return em
 }
 
 func (em *ElectionManager) Start() (<-chan ElectionState, error) {
@@ -70,17 +101,22 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 			em.setState(Participant)
 		}()
 
-		em.cli, err = clientv3.New(em.cfg.Etcd)
-		if err != nil {
-			return nil, fmt.Errorf("failed to setup etcd client: %v", err)
+		if em.session == nil {
+			if em.cli == nil {
+				em.cliCreated = true
+				em.cli, err = clientv3.New(em.cfg.Etcd)
+				if err != nil {
+					return nil, fmt.Errorf("failed to setup etcd client: %v", err)
+				}
+				log.Debug("etcd client created")
+			}
+			em.sessionCreated = true
+			em.session, err = concurrency.NewSession(em.cli, concurrency.WithTTL(em.cfg.SessionTimeoutSecs))
+			if err != nil {
+				return nil, fmt.Errorf("failed to create session: %v", err)
+			}
+			log.Debug("etcd session created")
 		}
-		log.Debug("etcd client created")
-
-		em.session, err = concurrency.NewSession(em.cli, concurrency.WithTTL(em.cfg.SessionTimeoutSecs))
-		if err != nil {
-			return nil, fmt.Errorf("failed to create session: %v", err)
-		}
-		log.Debug("etcd session created")
 
 		em.election = concurrency.NewElection(em.session, em.cfg.ElectionPrefix)
 		log.Debug("etcd election created")
@@ -188,14 +224,14 @@ func (em *ElectionManager) stop() error {
 		}
 		em.cancel()
 
-		if em.session != nil {
+		if em.sessionCreated && em.session != nil {
 			log.Debug("closing etcd session")
 			if err := em.session.Close(); err != nil {
 				log.Warn("error closing session: " + err.Error())
 			}
 		}
 
-		if em.cli != nil {
+		if em.cliCreated && em.cli != nil {
 			log.Debug("closing etcd client")
 			if err := em.cli.Close(); err != nil {
 				return err

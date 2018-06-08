@@ -31,24 +31,6 @@ func (cfg Config) LogFields() log.Fields {
 func (cfg Config) Validate() Config {
 	validcfg := cfg
 
-	if len(cfg.Etcd.Endpoints) == 0 {
-		validcfg.Etcd.Endpoints = []string{defaultEtcdEndpoint}
-		log.Warn("falling back to default configuration", log.Fields{
-			"name":     Name + ".Etcd",
-			"provided": cfg.Etcd,
-			"default":  validcfg.Etcd,
-		})
-	}
-
-	if cfg.Etcd.DialTimeout <= 0 {
-		validcfg.Etcd.DialTimeout = defaultDialTimeout
-		log.Warn("falling back to default configuration", log.Fields{
-			"name":     Name + ".Etcd",
-			"provided": cfg.Etcd,
-			"default":  validcfg.Etcd,
-		})
-	}
-
 	if len(cfg.ElectionPrefix) == 0 {
 		validcfg.ElectionPrefix = defaultElectionPrefix
 		log.Warn("falling back to default configuration", log.Fields{
@@ -64,6 +46,30 @@ func (cfg Config) Validate() Config {
 			"name":     Name + ".SessionTimeoutSecs",
 			"provided": cfg.SessionTimeoutSecs,
 			"default":  validcfg.SessionTimeoutSecs,
+		})
+	}
+
+	return validcfg
+}
+
+func (cfg Config) ValidateEtcdConfig() Config {
+	validcfg := cfg
+
+	if len(cfg.Etcd.Endpoints) == 0 {
+		validcfg.Etcd.Endpoints = []string{defaultEtcdEndpoint}
+		log.Warn("falling back to default configuration", log.Fields{
+			"name":     Name + ".Etcd",
+			"provided": cfg.Etcd,
+			"default":  validcfg.Etcd,
+		})
+	}
+
+	if cfg.Etcd.DialTimeout <= 0 {
+		validcfg.Etcd.DialTimeout = defaultDialTimeout
+		log.Warn("falling back to default configuration", log.Fields{
+			"name":     Name + ".Etcd",
+			"provided": cfg.Etcd,
+			"default":  validcfg.Etcd,
 		})
 	}
 
