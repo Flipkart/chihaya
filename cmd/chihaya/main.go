@@ -54,10 +54,11 @@ func (r *Run) Init(ps storage.PeerStore) error {
 
 	switch cfg.AvailabilityConfig.Name {
 	case "etcdfailover":
-		em, err := etcdfailover.NewElectionManager(cfg.AvailabilityConfig.Config)
+		efc, err := etcdfailover.NewConfig(cfg.AvailabilityConfig.Config, nil)
 		if err != nil {
-			return err
+			return fmt.Errorf("invalid config for etcdfailover: %v, error: %v", cfg.AvailabilityConfig.Config, err)
 		}
+		em := etcdfailover.NewElectionManager(*efc)
 		errChan, stopper, err := em.Run(runnable)
 		if err != nil {
 			return err
