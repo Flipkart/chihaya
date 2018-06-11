@@ -173,7 +173,7 @@ func (em *ElectionManager) Run(runnable func() error) (<-chan error, func() <-ch
 			case Leader:
 				em.cfg.Logger.Info("leader among trackers")
 				if err = runnable(); err != nil {
-					em.cfg.Logger.Error("encountered error in runnable")
+					em.cfg.Logger.Errorf("encountered error in runnable: %v", err)
 					errChan <- err
 				}
 			}

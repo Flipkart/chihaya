@@ -110,7 +110,7 @@ func TestErrorPropagationWhenLeaderRunnableFails(t *testing.T) {
 	go func() {
 		ec1, s1, err = em1.Run(func() error {
 			done <- "em1"
-			time.Sleep(5 * time.Second)
+			time.Sleep(2 * time.Second)
 			return fmt.Errorf("em1: unexpected error")
 		})
 		if err != nil {
@@ -140,6 +140,7 @@ func TestErrorPropagationWhenLeaderRunnableFails(t *testing.T) {
 		t.Fatalf("expecting value on error channel of leader, got closed")
 	}
 	t.Log("error received in leader", lerr)
+	em1.StopAndLog()
 
 	l = waitForLeader(t, done)
 	expected = "em2"
