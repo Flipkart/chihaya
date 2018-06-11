@@ -8,8 +8,6 @@ import (
 	"time"
 )
 
-type stopper func() <-chan error
-
 var configs []Config
 func init() {
 	configs = make([]Config, 0, 2)
