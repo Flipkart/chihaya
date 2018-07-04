@@ -338,7 +338,12 @@ func (ps *peerStore) DeleteSeeder(ih bittorrent.InfoHash, p bittorrent.Peer) err
 		return ps.memoryStore.DeleteSeeder(ih, p)
 	}
 	etcdOp := func() error {
-		return ps.etcdDeletePeer(ih, p, true)
+		err := ps.etcdDeletePeer(ih, p, true)
+		if err == storage.ErrResourceDoesNotExist {
+			log.Error(fmt.Sprintf("deleteseeder: announce for infohash=%v, peer=%v does not exist in etcd", ih, p.ID))
+			return nil
+		}
+		return err
 	}
 	return ps.doOp(memOp, etcdOp)
 }
@@ -370,7 +375,12 @@ func (ps *peerStore) DeleteLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) er
 		return ps.memoryStore.DeleteLeecher(ih, p)
 	}
 	etcdOp := func() error {
-		return ps.etcdDeletePeer(ih, p, false)
+		err := ps.etcdDeletePeer(ih, p, false)
+		if err == storage.ErrResourceDoesNotExist {
+			log.Error(fmt.Sprintf("deleteleecher: announce for infohash=%v, peer=%v does not exist in etcd", ih, p.ID))
+			return nil
+		}
+		return err
 	}
 	return ps.doOp(memOp, etcdOp)
 }
@@ -522,8 +532,15 @@ func (ps *peerStore) etcdDeletePeer(ih bittorrent.InfoHash, p bittorrent.Peer, s
 	ctx, cancel := context.WithTimeout(context.Background(), ps.cfg.EtcdOpTimeout)
 	defer cancel()
 
-	if _, err := ps.etcd.Delete(ctx, key); err != nil {
+	resp, err := ps.etcd.Delete(ctx, key)
+	if err != nil {
 		return fmt.Errorf("failed to do etcd operation, delete for %s: %v", key, err)
+	}
+	if resp.Deleted == 0 {
+		return storage.ErrResourceDoesNotExist
+	}
+	if resp.Deleted > 0 {
+		log.Warn(fmt.Sprintf("Keys deleted=%d for etcd key prefix=%s, expected count=1", resp.Deleted, key))
 	}
 
 	return nil
