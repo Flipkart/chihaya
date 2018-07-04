@@ -154,7 +154,7 @@ func TestPeerStore(t *testing.T, p PeerStore) {
 	require.Nil(t, <-e)
 }
 
-func TestPeerStoreDurability(t *testing.T, peerLifetime time.Duration, peerStoreFactory func()(PeerStore)) {
+func TestPeerStoreDurability(t *testing.T, peerLifetime time.Duration, peerStoreFactory func() PeerStore) {
 	testData := []struct {
 		ih   bittorrent.InfoHash
 		peer bittorrent.Peer

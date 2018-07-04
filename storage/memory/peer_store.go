@@ -185,7 +185,7 @@ func NewWithAnnounces(provided Config, announces []Announce) (storage.PeerStore,
 	return mps, nil
 }
 
-func NewAnnounce(ih *bittorrent.InfoHash, pk []byte, seeder bool, clock int64) (Announce) {
+func NewAnnounce(ih *bittorrent.InfoHash, pk []byte, seeder bool, clock int64) Announce {
 	return Announce{ih, pk, seeder, clock}
 }
 
@@ -219,10 +219,10 @@ func decodePeerKey(pk serializedPeer) bittorrent.Peer {
 }
 
 type Announce struct {
-	ih     	*bittorrent.InfoHash
-	pk     	[]byte
-	seeder 	bool
-	clock	int64
+	ih     *bittorrent.InfoHash
+	pk     []byte
+	seeder bool
+	clock  int64
 }
 
 type peerShard struct {

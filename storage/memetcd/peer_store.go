@@ -7,19 +7,19 @@ import (
 
 	"gopkg.in/yaml.v2"
 
+	"bytes"
+	"context"
+	"fmt"
 	"github.com/Flipkart/chihaya/bittorrent"
 	"github.com/Flipkart/chihaya/pkg/log"
-	"github.com/Flipkart/chihaya/storage"
-	"github.com/coreos/etcd/clientv3"
-	"strings"
-	"github.com/Flipkart/chihaya/storage/memory"
-	"context"
-	"time"
-	"fmt"
-	"github.com/coreos/etcd/clientv3/namespace"
 	"github.com/Flipkart/chihaya/pkg/timecache"
+	"github.com/Flipkart/chihaya/storage"
+	"github.com/Flipkart/chihaya/storage/memory"
+	"github.com/coreos/etcd/clientv3"
+	"github.com/coreos/etcd/clientv3/namespace"
 	"strconv"
-	"bytes"
+	"strings"
+	"time"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.
@@ -27,10 +27,10 @@ const Name = "memetcd"
 
 // Default config constants.
 const (
-	defaultEtcdEndpoint			       = "127.0.0.1:2379"
-	defaultEtcdNamespace			   = "tracker/"
-	defaultEtcdOpTimeout			   = 3 * time.Second
-	defaultBootstrapTimeout		   	   = 60 * time.Second
+	defaultEtcdEndpoint     = "127.0.0.1:2379"
+	defaultEtcdNamespace    = "tracker/"
+	defaultEtcdOpTimeout    = 3 * time.Second
+	defaultBootstrapTimeout = 60 * time.Second
 )
 
 func init() {
@@ -59,28 +59,28 @@ func (d driver) NewPeerStore(icfg interface{}) (storage.PeerStore, error) {
 
 // Config holds the configuration of a memory PeerStore.
 type Config struct {
-	EtcdConfig				clientv3.Config	`yaml:"etcd_config"`
-	EtcdNamespace			string		  	`yaml:"etcd_namespace"`
-	EtcdOpTimeout			time.Duration	`yaml:"etcd_op_timeout"`
-	BootstrapTimeout		time.Duration	`yaml:"bootstrap_timeout"`
-	EtcdOpAsync				bool			`yaml:"etcd_op_async"`
-	MemoryStore				memory.Config	`yaml:"memory_store"`
+	EtcdConfig       clientv3.Config `yaml:"etcd_config"`
+	EtcdNamespace    string          `yaml:"etcd_namespace"`
+	EtcdOpTimeout    time.Duration   `yaml:"etcd_op_timeout"`
+	BootstrapTimeout time.Duration   `yaml:"bootstrap_timeout"`
+	EtcdOpAsync      bool            `yaml:"etcd_op_async"`
+	MemoryStore      memory.Config   `yaml:"memory_store"`
 }
 
 // LogFields renders the current config as a set of Logrus fields.
 func (cfg Config) LogFields() log.Fields {
 	fields := log.Fields{
-		"name":               Name,
-		"etcdConfig":		  cfg.EtcdConfig,
-		"etcdNamespace":	  cfg.EtcdNamespace,
-		"etcdOpTimeout":	  cfg.EtcdOpTimeout,
-		"bootstrapTimeout":	  cfg.BootstrapTimeout,
-		"etcdOpAsync":		  cfg.EtcdOpAsync,
+		"name":             Name,
+		"etcdConfig":       cfg.EtcdConfig,
+		"etcdNamespace":    cfg.EtcdNamespace,
+		"etcdOpTimeout":    cfg.EtcdOpTimeout,
+		"bootstrapTimeout": cfg.BootstrapTimeout,
+		"etcdOpAsync":      cfg.EtcdOpAsync,
 	}
 
 	prefix := "memoryStore."
 	for k, v := range cfg.MemoryStore.LogFields() {
-		fields[prefix + k] = v
+		fields[prefix+k] = v
 	}
 
 	return fields
@@ -196,7 +196,6 @@ func loadAnnounces(etcd *clientv3.Client, timeout time.Duration) ([]memory.Annou
 	return announces, nil
 }
 
-
 type serializedPeer []byte
 
 func newPeerKey(p *bittorrent.Peer) serializedPeer {
@@ -208,17 +207,17 @@ func newPeerKey(p *bittorrent.Peer) serializedPeer {
 }
 
 const (
-	EtcdKeySep 					= "/"
-	EtcdAnnouncePrefix 			= "announce"
-	EtcdAnnounceSeederPrefix 	= "s" 				//len 1
-	EtcdAnnounceLeecherPrefix	= "l"				//len 1
+	EtcdKeySep                = "/"
+	EtcdAnnouncePrefix        = "announce"
+	EtcdAnnounceSeederPrefix  = "s" //len 1
+	EtcdAnnounceLeecherPrefix = "l" //len 1
 )
 
 // Format of announce key in etcd:
 // <announce_prefix><sep><infohash><sep><peer_type><sep><peer_key>
 // peer key as returned by newPeerKey and uniquely identifies a peer in swarm
 // peer type can either be s(seeder) or l(leecher)
-func newAnnounceKey(ih *bittorrent.InfoHash, p *bittorrent.Peer, seeder bool) ([]byte) {
+func newAnnounceKey(ih *bittorrent.InfoHash, p *bittorrent.Peer, seeder bool) []byte {
 	var peerType []byte
 	if seeder {
 		peerType = []byte(EtcdAnnounceSeederPrefix)
@@ -242,12 +241,12 @@ func newAnnounceKey(ih *bittorrent.InfoHash, p *bittorrent.Peer, seeder bool) ([
 }
 
 func decodeAnnounceKey(key []byte) (*bittorrent.InfoHash, []byte, bool, error) {
-	announceKeyReader := func() (func() ([]byte, error)) {
+	announceKeyReader := func() func() ([]byte, error) {
 		sep := []byte(EtcdKeySep)
 		partLengths := []int{len([]byte(EtcdAnnouncePrefix)), 20, 1}
 		begin, end, currPart := 0, 0, 0
 		return func() ([]byte, error) {
-			if currPart == len(partLengths) + 1 {
+			if currPart == len(partLengths)+1 {
 				//all parts of announce key have been read
 				return nil, nil
 			}

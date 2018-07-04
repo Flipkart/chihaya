@@ -15,15 +15,15 @@ func createNew() s.PeerStore {
 		EtcdConfig: clientv3.Config{
 			Endpoints: []string{"127.0.0.1:2379"},
 		},
-		EtcdNamespace: "tracker/",
-		EtcdOpAsync: false,
-		EtcdOpTimeout: 3 * time.Second,
+		EtcdNamespace:    "tracker/",
+		EtcdOpAsync:      false,
+		EtcdOpTimeout:    3 * time.Second,
 		BootstrapTimeout: 10 * time.Second,
 		MemoryStore: memory.Config{
-			ShardCount: 1024,
-			GarbageCollectionInterval: 10 * time.Minute,
+			ShardCount:                  1024,
+			GarbageCollectionInterval:   10 * time.Minute,
 			PrometheusReportingInterval: 10 * time.Minute,
-			PeerLifetime: 30 * time.Minute,
+			PeerLifetime:                30 * time.Minute,
 		},
 	})
 
@@ -39,14 +39,14 @@ func TestPeerStore(t *testing.T) {
 
 func TestPeerStoreDurability(t *testing.T) {
 	peerLifetime := 10 * time.Second
-	peerStoreFactory := func() (s.PeerStore) {
+	peerStoreFactory := func() s.PeerStore {
 		p, err := New(Config{
 			EtcdConfig: clientv3.Config{
 				Endpoints: []string{"127.0.0.1:2379"},
 			},
-			EtcdNamespace: "durabletracker/",
-			EtcdOpAsync:   false,
-			EtcdOpTimeout: 3 * time.Second,
+			EtcdNamespace:    "durabletracker/",
+			EtcdOpAsync:      false,
+			EtcdOpTimeout:    3 * time.Second,
 			BootstrapTimeout: 10 * time.Second,
 			MemoryStore: memory.Config{
 				ShardCount:                  1024,
