@@ -19,6 +19,7 @@ import (
 	"github.com/coreos/etcd/clientv3/namespace"
 	"github.com/Flipkart/chihaya/pkg/timecache"
 	"strconv"
+	"bytes"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.
@@ -61,7 +62,6 @@ type Config struct {
 	EtcdConfig				clientv3.Config	`yaml:"etcd_config"`
 	EtcdNamespace			string		  	`yaml:"etcd_namespace"`
 	EtcdOpTimeout			time.Duration	`yaml:"etcd_op_timeout"`
-	Bootstrap				bool			`yaml:"bootstrap"`
 	BootstrapTimeout		time.Duration	`yaml:"bootstrap_timeout"`
 	EtcdOpAsync				bool			`yaml:"etcd_op_async"`
 	MemoryStore				memory.Config	`yaml:"memory_store"`
@@ -74,7 +74,6 @@ func (cfg Config) LogFields() log.Fields {
 		"etcdConfig":		  cfg.EtcdConfig,
 		"etcdNamespace":	  cfg.EtcdNamespace,
 		"etcdOpTimeout":	  cfg.EtcdOpTimeout,
-		"bootstrap":		  cfg.Bootstrap,
 		"bootstrapTimeout":	  cfg.BootstrapTimeout,
 		"etcdOpAsync":		  cfg.EtcdOpAsync,
 	}
@@ -137,7 +136,7 @@ func (cfg Config) Validate() Config {
 	return validcfg
 }
 
-// New creates a new PeerStore backed by memory.
+// New creates a new PeerStore backed by etcd.
 func New(provided Config) (storage.PeerStore, error) {
 	cfg := provided.Validate()
 
@@ -149,7 +148,11 @@ func New(provided Config) (storage.PeerStore, error) {
 	etcdClient.Watcher = namespace.NewWatcher(etcdClient.Watcher, cfg.EtcdNamespace)
 	etcdClient.Lease = namespace.NewLease(etcdClient.Lease, cfg.EtcdNamespace)
 
-	memoryStore, err := memory.New(cfg.MemoryStore)
+	announces, err := loadAnnounces(etcdClient, cfg.BootstrapTimeout)
+	if err != nil {
+		return nil, err
+	}
+	memoryStore, err := memory.NewWithAnnounces(cfg.MemoryStore, announces)
 	if err != nil {
 		return nil, err
 	}
@@ -160,13 +163,39 @@ func New(provided Config) (storage.PeerStore, error) {
 		memoryStore: memoryStore,
 		closed:      make(chan struct{}),
 	}
-
-	if err = ps.Bootstrap(); err != nil {
-		return nil, err
-	}
-
 	return ps, nil
 }
+
+// We do serializable reads of announce keys (compared to linearizable by default) for lower latency
+// Obvious con is that stale reads might occur which we are fine with in this scenario
+func loadAnnounces(etcd *clientv3.Client, timeout time.Duration) ([]memory.Announce, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	rangeResp, err := etcd.Get(ctx, EtcdAnnouncePrefix, clientv3.WithPrefix(), clientv3.WithSerializable())
+	if err != nil {
+		return nil, fmt.Errorf("failed to do etcd operation, bootstrap of all infohash-peer announces: %v", err)
+	}
+
+	announces := make([]memory.Announce, 0, rangeResp.Count)
+	log.Info(fmt.Sprintf("existing announces found = %d", rangeResp.Count))
+	for _, kv := range rangeResp.Kvs {
+		ih, peerKey, seeder, err := decodeAnnounceKey(kv.Key)
+		if err != nil {
+			log.Error(fmt.Sprintf("error decoding announce key %s: %v", kv.Key, err))
+			continue
+		}
+		clock, err := strconv.ParseInt(string(kv.Value), 10, 64)
+		if err != nil {
+			log.Error(fmt.Sprintf("Invalid clock value read for key-value %s-%s: %v", kv.Key, kv.Value, err))
+			continue
+		}
+		announces = append(announces, memory.NewAnnounce(ih, peerKey, seeder, clock))
+	}
+
+	return announces, nil
+}
+
 
 type serializedPeer []byte
 
@@ -185,8 +214,11 @@ const (
 	EtcdAnnounceLeecherPrefix	= "l"				//len 1
 )
 
+// Format of announce key in etcd:
+// <announce_prefix><sep><infohash><sep><peer_type><sep><peer_key>
+// peer key as returned by newPeerKey and uniquely identifies a peer in swarm
+// peer type can either be s(seeder) or l(leecher)
 func newAnnounceKey(ih *bittorrent.InfoHash, p *bittorrent.Peer, seeder bool) ([]byte) {
-	prefix, sep := []byte(EtcdAnnouncePrefix), []byte(EtcdKeySep)
 	var peerType []byte
 	if seeder {
 		peerType = []byte(EtcdAnnounceSeederPrefix)
@@ -199,37 +231,75 @@ func newAnnounceKey(ih *bittorrent.InfoHash, p *bittorrent.Peer, seeder bool) ([
 		pk = newPeerKey(p)
 	}
 
-	key := make([]byte, 0, len(prefix) + len(sep) * 3 + len(ih) + len(peerType) + len(pk))
-	key = append(key, prefix...)
-	key = append(key, sep...)
-	key = append(key, ih[:]...)
-	key = append(key, sep...)
-	key = append(key, peerType...)
-	key = append(key, sep...)
-	key = append(key, pk...)
+	key := bytes.Join([][]byte{
+		[]byte(EtcdAnnouncePrefix),
+		ih[:],
+		peerType,
+		pk,
+	}, []byte(EtcdKeySep))
 
 	return key
 }
 
-func decodeAnnounceKey(key []byte) (*bittorrent.InfoHash, []byte, bool) {
-	prefix, sep := []byte(EtcdAnnouncePrefix), []byte(EtcdKeySep)
+func decodeAnnounceKey(key []byte) (*bittorrent.InfoHash, []byte, bool, error) {
+	announceKeyReader := func() (func() ([]byte, error)) {
+		sep := []byte(EtcdKeySep)
+		partLengths := []int{len([]byte(EtcdAnnouncePrefix)), 20, 1}
+		begin, end, currPart := 0, 0, 0
+		return func() ([]byte, error) {
+			if currPart == len(partLengths) + 1 {
+				//all parts of announce key have been read
+				return nil, nil
+			}
+			if currPart < len(partLengths) {
+				end = begin + partLengths[currPart]
+				if end > len(key) {
+					return nil, fmt.Errorf("invalid key, length:%d shorter than expected:%d", len(key), end)
+				}
+				read := key[begin:end]
+				begin = end + len(sep)
+				currPart += 1
+				return read, nil
+			} else {
+				//this is the last part containing peer key, read till the end
+				read := key[begin:]
+				currPart += 1
+				return read, nil
+			}
+		}
+	}()
 
-	offset := len(prefix) + len(sep)
-	ih := bittorrent.InfoHashFromBytes(key[offset:offset+20])
-
-	offset += len(ih) + len(sep)
-	peerType := key[offset:offset + 1]
-	var seeder bool
-	if string(peerType) == EtcdAnnounceSeederPrefix {
-		seeder = true
-	} else {
-		seeder = false
+	totalParts := 4
+	parts := make([][]byte, 0, totalParts)
+	for {
+		part, err := announceKeyReader()
+		if err == nil {
+			if len(part) == 0 {
+				//empty part received, decoding finished
+				if len(parts) == totalParts {
+					//all parts received, exit for loop
+					break
+				}
+				err = fmt.Errorf("got=%d less than expected=%d parts of announce key", len(parts), totalParts)
+			} else {
+				if len(parts) == totalParts {
+					err = fmt.Errorf("got more than expected=%d parts of announce key", totalParts)
+				}
+			}
+		}
+		if err != nil {
+			return nil, nil, false, err
+		}
+		parts = append(parts, part)
 	}
 
-	offset += 1 + len(sep)
-	peerKey := key[offset:]
-
-	return &ih, peerKey, seeder
+	prefix := string(parts[0])
+	if EtcdAnnouncePrefix != prefix {
+		return nil, nil, false, fmt.Errorf("expected prefix=%s, got=%s", EtcdAnnouncePrefix, prefix)
+	}
+	ih := bittorrent.InfoHashFromBytes(parts[1])
+	seeder := string(parts[2]) == EtcdAnnounceSeederPrefix
+	return &ih, parts[3], seeder, nil
 }
 
 type peerStore struct {
@@ -248,23 +318,13 @@ func (ps *peerStore) PutSeeder(ih bittorrent.InfoHash, p bittorrent.Peer) error 
 	default:
 	}
 
-	if err := ps.memoryStore.PutSeeder(ih, p); err != nil {
-		return err
+	memOp := func() error {
+		return ps.memoryStore.PutSeeder(ih, p)
 	}
-
-	if ps.cfg.EtcdOpAsync {
-		go func() {
-			if err := ps.etcdPutOrUpdatePeer(ih, p, true); err != nil {
-				log.Error(err)
-			}
-		}()
-	} else {
-		if err := ps.etcdPutOrUpdatePeer(ih, p, true); err != nil {
-			return err
-		}
+	etcdOp := func() error {
+		return ps.etcdPutOrUpdatePeer(ih, p, true)
 	}
-
-	return nil
+	return ps.doOp(memOp, etcdOp)
 }
 
 func (ps *peerStore) DeleteSeeder(ih bittorrent.InfoHash, p bittorrent.Peer) error {
@@ -274,23 +334,13 @@ func (ps *peerStore) DeleteSeeder(ih bittorrent.InfoHash, p bittorrent.Peer) err
 	default:
 	}
 
-	if err := ps.memoryStore.DeleteSeeder(ih, p); err != nil {
-		return err
+	memOp := func() error {
+		return ps.memoryStore.DeleteSeeder(ih, p)
 	}
-
-	if ps.cfg.EtcdOpAsync {
-		go func() {
-			if err := ps.etcdDeletePeer(ih, p, true); err != nil {
-				log.Error(err)
-			}
-		}()
-	} else {
-		if err := ps.etcdDeletePeer(ih, p, true); err != nil {
-			return err
-		}
+	etcdOp := func() error {
+		return ps.etcdDeletePeer(ih, p, true)
 	}
-
-	return nil
+	return ps.doOp(memOp, etcdOp)
 }
 
 func (ps *peerStore) PutLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) error {
@@ -300,23 +350,13 @@ func (ps *peerStore) PutLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) error
 	default:
 	}
 
-	if err := ps.memoryStore.PutLeecher(ih, p); err != nil {
-		return err
+	memOp := func() error {
+		return ps.memoryStore.PutLeecher(ih, p)
 	}
-
-	if ps.cfg.EtcdOpAsync {
-		go func() {
-			if err := ps.etcdPutOrUpdatePeer(ih, p, false); err != nil {
-				log.Error(err)
-			}
-		}()
-	} else {
-		if err := ps.etcdPutOrUpdatePeer(ih, p, false); err != nil {
-			return err
-		}
+	etcdOp := func() error {
+		return ps.etcdPutOrUpdatePeer(ih, p, false)
 	}
-
-	return nil
+	return ps.doOp(memOp, etcdOp)
 }
 
 func (ps *peerStore) DeleteLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) error {
@@ -326,23 +366,13 @@ func (ps *peerStore) DeleteLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) er
 	default:
 	}
 
-	if err := ps.memoryStore.DeleteLeecher(ih, p); err != nil {
-		return err
+	memOp := func() error {
+		return ps.memoryStore.DeleteLeecher(ih, p)
 	}
-
-	if ps.cfg.EtcdOpAsync {
-		go func() {
-			if err := ps.etcdDeletePeer(ih, p, false); err != nil {
-				log.Error(err)
-			}
-		}()
-	} else {
-		if err := ps.etcdDeletePeer(ih, p, false); err != nil {
-			return err
-		}
+	etcdOp := func() error {
+		return ps.etcdDeletePeer(ih, p, false)
 	}
-
-	return nil
+	return ps.doOp(memOp, etcdOp)
 }
 
 func (ps *peerStore) GraduateLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) error {
@@ -352,23 +382,13 @@ func (ps *peerStore) GraduateLeecher(ih bittorrent.InfoHash, p bittorrent.Peer) 
 	default:
 	}
 
-	if err := ps.memoryStore.GraduateLeecher(ih, p); err != nil {
-		return err
+	memOp := func() error {
+		return ps.memoryStore.GraduateLeecher(ih, p)
 	}
-
-	if ps.cfg.EtcdOpAsync {
-		go func() {
-			if err := ps.etcdGraduateLeecher(ih, p); err != nil {
-				log.Error(err)
-			}
-		}()
-	} else {
-		if err := ps.etcdGraduateLeecher(ih, p); err != nil {
-			return err
-		}
+	etcdOp := func() error {
+		return ps.etcdGraduateLeecher(ih, p)
 	}
-
-	return nil
+	return ps.doOp(memOp, etcdOp)
 }
 
 func (ps *peerStore) AnnouncePeers(ih bittorrent.InfoHash, seeder bool, numWant int, announcer bittorrent.Peer) (peers []bittorrent.Peer, err error) {
@@ -393,38 +413,8 @@ func (ps *peerStore) ScrapeSwarm(ih bittorrent.InfoHash, addressFamily bittorren
 	return
 }
 
-// We do serializable reads of announce keys (compared to linearizable by default) for lower latency
-// Obvious con is that stale reads might occur which we are fine with in this scenario
-func (ps* peerStore) Bootstrap(...interface{}) error {
-	ctx, cancel := context.WithTimeout(context.Background(), ps.cfg.BootstrapTimeout)
-	defer cancel()
-
-	rangeResp, err := ps.etcd.Get(ctx, EtcdAnnouncePrefix, clientv3.WithPrefix(), clientv3.WithSerializable())
-	if err != nil {
-		return fmt.Errorf("failed to do etcd operation, bootstrap of all infohash-peer announces: %v", err)
-	}
-
-	announces := make([]interface{}, 0, rangeResp.Count)
-	log.Info(fmt.Sprintf("existing announces found = %d", rangeResp.Count))
-	for _, kv := range rangeResp.Kvs {
-		ih, peerKey, seeder := decodeAnnounceKey(kv.Key)
-		clock, err := strconv.ParseInt(string(kv.Value), 10, 64)
-		if err != nil {
-			log.Error(fmt.Sprintf("Invalid clock value read for key-value %s-%s: %v", kv.Key, string(kv.Value), err))
-			continue
-		}
-		announces = append(announces, memory.NewAnnounce(ih, peerKey, seeder, clock))
-	}
-
-	if err = ps.memoryStore.Bootstrap(announces...); err != nil {
-		return fmt.Errorf("error bootstrapping memory store with announces from etcd: %v", err)
-	}
-
-	return nil
-}
-
 func (ps *peerStore) Stop() <-chan error {
-	c := make(chan error)
+	c := make(chan error, 2)
 	go func() {
 		close(ps.closed)
 		if err := <-ps.memoryStore.Stop(); err != nil {
@@ -444,6 +434,39 @@ func (ps *peerStore) LogFields() log.Fields {
 	return ps.cfg.LogFields()
 }
 
+// RACES IN ETCD OPERATIONS FOR (INFOHASH, PEERKEY) WHEN ETCD ASYNC OP IS TRUE
+// ---------------------------------------------------------------------------
+// There can be a race among deleteseeder, graduateleecher or any other etcdop for same ih,p when ps.cfg.EtcdOpAsync == true
+// This should be a rare event unless torrent clients are misbehaving
+// or etcd goes down and subsequently previous etcd operations block long enough
+// In event of a race, etcd operations will not be consistent but responses to client will be since they are served from in-memory store
+// At worst in case of process restart, some announces will be extra or missing which should be ok really
+// Tradeoff is less code complexity presently for possibility of races
+//
+// SUGGESTED FIX:
+// If above races do end up to be a concern, we need a queue of etcd ops and multiple consumers draining them
+// such that (ih,p) operations are ordered wrt each other.
+//
+func (ps *peerStore) doOp(memOp func() error, etcdOp func() error) error {
+	if ps.cfg.EtcdOpAsync {
+		if err := memOp(); err != nil {
+			return err
+		}
+		go func() {
+			if err := etcdOp(); err != nil {
+				log.Error(err)
+			}
+		}()
+	} else {
+		if err := etcdOp(); err != nil {
+			return err
+		}
+		if err := memOp(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 // NON-ATOMICITY AND CONSEQUENCES
 // ------------------------------
