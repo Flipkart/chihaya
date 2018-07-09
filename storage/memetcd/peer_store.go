@@ -256,8 +256,11 @@ func decodeAnnounceKey(key []byte) (*bittorrent.InfoHash, []byte, bool, error) {
 					return nil, fmt.Errorf("invalid key, length:%d shorter than expected:%d", len(key), end)
 				}
 				read := key[begin:end]
-				begin = end + len(sep)
 				currPart += 1
+				begin = end + len(sep)
+				if begin <= len(key) && !bytes.Equal(sep, key[end:begin]) {
+					return nil, fmt.Errorf("expected sep=%s, found=%s", EtcdKeySep, string(key[end:begin]))
+				}
 				return read, nil
 			} else {
 				//this is the last part containing peer key, read till the end
@@ -339,7 +342,7 @@ func (ps *peerStore) DeleteSeeder(ih bittorrent.InfoHash, p bittorrent.Peer) err
 	etcdOp := func() error {
 		err := ps.etcdDeletePeer(ih, p, true)
 		if err == storage.ErrResourceDoesNotExist {
-			log.Error(fmt.Sprintf("deleteseeder: announce for infohash=%v, peer=%v does not exist in etcd", ih, p.ID))
+			log.Warn(fmt.Sprintf("deleteseeder: announce for infohash=%v, peer=%v does not exist in etcd", ih, p.ID))
 			return nil
 		}
 		return err
@@ -458,9 +461,6 @@ func (ps *peerStore) LogFields() log.Fields {
 //
 func (ps *peerStore) doOp(memOp func() error, etcdOp func() error) error {
 	if ps.cfg.EtcdOpAsync {
-		if err := memOp(); err != nil {
-			return err
-		}
 		go func() {
 			if err := etcdOp(); err != nil {
 				log.Error(err)
@@ -470,11 +470,8 @@ func (ps *peerStore) doOp(memOp func() error, etcdOp func() error) error {
 		if err := etcdOp(); err != nil {
 			return err
 		}
-		if err := memOp(); err != nil {
-			return err
-		}
 	}
-	return nil
+	return memOp()
 }
 
 // NON-ATOMICITY AND CONSEQUENCES
