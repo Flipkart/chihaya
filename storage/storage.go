@@ -104,11 +104,6 @@ type PeerStore interface {
 	// If the Swarm does not exist, an empty Scrape and no error is returned.
 	ScrapeSwarm(infoHash bittorrent.InfoHash, addressFamily bittorrent.AddressFamily) bittorrent.Scrape
 
-	// Bootstrap initializes peer store with tracker-related data
-	// This could be statistics, announces, etc
-	// Useful when building durable peer stores
-	Bootstrap(...interface{}) error
-
 	// stop.Stopper is an interface that expects a Stop method to stop the
 	// PeerStore.
 	// For more details see the documentation in the stop package.

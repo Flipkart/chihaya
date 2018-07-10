@@ -17,6 +17,7 @@ import (
 	_ "github.com/Flipkart/chihaya/middleware/varinterval"
 
 	// Imported to register as storage drivers.
+	_ "github.com/Flipkart/chihaya/storage/memetcd"
 	_ "github.com/Flipkart/chihaya/storage/memory"
 	_ "github.com/Flipkart/chihaya/storage/memorybysubnet"
 	_ "github.com/Flipkart/chihaya/storage/memetcd"

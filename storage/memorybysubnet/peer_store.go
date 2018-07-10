@@ -707,10 +707,6 @@ func (ps *peerStore) collectGarbage(cutoff time.Time) error {
 	return nil
 }
 
-func (ps *peerStore) Bootstrap(...interface{}) error {
-	return nil
-}
-
 func (ps *peerStore) Stop() <-chan error {
 	c := make(chan error)
 	go func() {

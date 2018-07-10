@@ -15,7 +15,6 @@ import (
 	"github.com/Flipkart/chihaya/pkg/log"
 	"github.com/Flipkart/chihaya/pkg/timecache"
 	"github.com/Flipkart/chihaya/storage"
-	"fmt"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.
@@ -168,7 +167,25 @@ func New(provided Config) (storage.PeerStore, error) {
 	return ps, nil
 }
 
-func NewAnnounce(ih *bittorrent.InfoHash, pk []byte, seeder bool, clock int64) (Announce) {
+// Initializes peer store with existing announces
+// Useful when building durable peer stores
+func NewWithAnnounces(provided Config, announces []Announce) (storage.PeerStore, error) {
+	ps, err := New(provided)
+	if err != nil {
+		return nil, err
+	}
+	//return ps, nil
+	mps, ok := ps.(*peerStore)
+	if !ok {
+		panic("Unexpected error, memory store not implementing storage.Peerstore")
+	}
+	if err := mps.bootstrap(announces...); err != nil {
+		return nil, err
+	}
+	return mps, nil
+}
+
+func NewAnnounce(ih *bittorrent.InfoHash, pk []byte, seeder bool, clock int64) Announce {
 	return Announce{ih, pk, seeder, clock}
 }
 
@@ -202,10 +219,10 @@ func decodePeerKey(pk serializedPeer) bittorrent.Peer {
 }
 
 type Announce struct {
-	ih     	*bittorrent.InfoHash
-	pk     	[]byte
-	seeder 	bool
-	clock	int64
+	ih     *bittorrent.InfoHash
+	pk     []byte
+	seeder bool
+	clock  int64
 }
 
 type peerShard struct {
@@ -520,14 +537,9 @@ func (ps *peerStore) ScrapeSwarm(ih bittorrent.InfoHash, addressFamily bittorren
 }
 
 // loads announces in-memory
-func (ps *peerStore) Bootstrap(announces ...interface{}) error {
+func (ps *peerStore) bootstrap(announces ...Announce) error {
 	cutoff := time.Now().Add(-ps.cfg.PeerLifetime).UnixNano()
-	for _, entry := range announces {
-		a, ok := entry.(Announce)
-		if !ok {
-			return fmt.Errorf("expected values of type storage.memory.Announce")
-		}
-
+	for _, a := range announces {
 		// Ignore expired announces
 		if a.clock <= cutoff {
 			continue
