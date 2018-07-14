@@ -31,7 +31,7 @@ type ElectionManager struct {
 	cancel         context.CancelFunc
 	mu             sync.Mutex
 	state          ElectionState
-	evtChan        *SafeSendChan
+	evtChan        chan ElectionState
 	sessionExpiryMonitor	chan bool
 }
 
@@ -76,7 +76,7 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 	defer em.mu.Unlock()
 
 	if em.state == NotParticipant {
-		em.evtChan = NewSafeSendChan()
+		em.evtChan = make(chan ElectionState, 1)
 		var err error
 		//ensure consecutive start-ups don't happen
 		defer func() {
@@ -128,7 +128,7 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 			} else {
 				em.mu.Lock()
 				//If Stop and this goroutine were competing for same lock and Stop won, then state can be NotParticipant
-				if em.state != NotParticipant {
+				if em.state == Participant {
 					em.setState(Leader)
 				}
 				em.mu.Unlock()
@@ -136,7 +136,7 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 			em.cfg.logger.Debug("stopped election campaign")
 		}()
 
-		return em.evtChan.RecvChan(), nil
+		return em.evtChan, nil
 	} else {
 		return nil, fmt.Errorf("cannot setup election manager. already started, state = %s", em.state)
 	}
@@ -204,7 +204,7 @@ func (em *ElectionManager) stop() error {
 		defer func() {
 			em.state = NotParticipant
 		}()
-		em.evtChan.Close()
+		close(em.evtChan)
 
 		// check for nil on election, session and cli because its possible that `ElectionManager.Start()` failed somewhere in between
 		if em.election != nil {
@@ -244,7 +244,5 @@ func (em *ElectionManager) stop() error {
 func (em *ElectionManager) setState(newState ElectionState) {
 	em.cfg.logger.Debugf("new election state received: %s", newState)
 	em.state = newState
-	if err := em.evtChan.Send(em.state); err != nil {
-		em.cfg.logger.Warn(err)
-	}
+	em.evtChan <- em.state
 }
