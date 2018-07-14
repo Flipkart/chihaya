@@ -4,8 +4,8 @@ import (
 	"time"
 	"github.com/coreos/etcd/clientv3"
 	"go.uber.org/zap"
-	"log"
 	"gopkg.in/yaml.v2"
+	"fmt"
 )
 
 const Name = "etcdfailover"
@@ -21,36 +21,35 @@ type Config struct {
 	Etcd               clientv3.Config `yaml:"etcd"`
 	ElectionPrefix     string          `yaml:"election_prefix"`
 	SessionTimeoutSecs int             `yaml:"session_timeout_secs"`
-	Logger		   	   *zap.SugaredLogger
+	logger             *zap.SugaredLogger
 }
 
-func NewConfig(icfg interface{}, logger *zap.SugaredLogger) (*Config, error) {
+func NewConfig(icfg interface{}, logger *zap.SugaredLogger) (cfg Config, err error) {
 	// Marshal the config back into bytes.
 	bytes, err := yaml.Marshal(icfg)
 	if err != nil {
-		return nil, err
+		return
 	}
 	// Unmarshal the bytes into the proper config type.
-	var cfg Config
 	err = yaml.Unmarshal(bytes, &cfg)
 	if err != nil {
-		return nil, err
+		return
 	}
-	cfg.Logger = logger
-	return &cfg, nil
+	cfg.logger = logger
+	return
 }
 
 func (cfg Config) Validate() Config {
 	validcfg := cfg
 
-	if cfg.Logger == nil {
-		validcfg.Logger = getDefaultLogger()
-		validcfg.Logger.Info("setup zap logger with default production values, will log to stdout at info level")
+	if cfg.logger == nil {
+		validcfg.logger = getDefaultLogger()
+		validcfg.logger.Info("setup zap logger with default production values, will log to stdout at info level")
 	}
 
 	if len(cfg.ElectionPrefix) == 0 {
 		validcfg.ElectionPrefix = defaultElectionPrefix
-		validcfg.Logger.Warnw("falling back to default configuration",
+		validcfg.logger.Warnw("falling back to default configuration",
 			"name", Name + ".ElectionPrefix",
 			"provided", cfg.ElectionPrefix,
 			"default",  validcfg.ElectionPrefix,
@@ -59,7 +58,7 @@ func (cfg Config) Validate() Config {
 
 	if cfg.SessionTimeoutSecs <= 0 {
 		validcfg.SessionTimeoutSecs = defaultSessionTimeoutSecs
-		validcfg.Logger.Warnw("falling back to default configuration",
+		validcfg.logger.Warnw("falling back to default configuration",
 			"name",     Name + ".SessionTimeoutSecs",
 			"provided", cfg.SessionTimeoutSecs,
 			"default",  validcfg.SessionTimeoutSecs,
@@ -74,7 +73,7 @@ func (cfg Config) ValidateEtcdConfig() Config {
 
 	if len(cfg.Etcd.Endpoints) == 0 {
 		validcfg.Etcd.Endpoints = []string{defaultEtcdEndpoint}
-		validcfg.Logger.Warnw("falling back to default configuration",
+		validcfg.logger.Warnw("falling back to default configuration",
 			"name",     Name + ".Etcd",
 			"provided", cfg.Etcd.Endpoints,
 			"default",  validcfg.Etcd.Endpoints,
@@ -83,7 +82,7 @@ func (cfg Config) ValidateEtcdConfig() Config {
 
 	if cfg.Etcd.DialTimeout <= 0 {
 		validcfg.Etcd.DialTimeout = defaultDialTimeout
-		validcfg.Logger.Warnw("falling back to default configuration",
+		validcfg.logger.Warnw("falling back to default configuration",
 			"name",     Name + ".Etcd",
 			"provided", cfg.Etcd.DialTimeout,
 			"default",  validcfg.Etcd.DialTimeout,
@@ -96,7 +95,7 @@ func (cfg Config) ValidateEtcdConfig() Config {
 func getDefaultLogger() *zap.SugaredLogger {
 	zapLogger, err := zap.NewProduction()
 	if err != nil {
-		log.Fatalf("err creating zap logger: %v", err)
+		panic(fmt.Sprintf("err creating zap logger: %v", err))
 	}
 	return zapLogger.Sugar()
 }

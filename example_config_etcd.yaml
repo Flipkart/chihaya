@@ -136,3 +136,10 @@ chihaya:
   #    modify_response_probability: 0.2
   #    max_increase_delta: 60
   #    modify_min_interval: true
+
+  availability:
+    name: "etcdfailover"
+    config:
+      etcd:
+        endpoints: ["127.0.0.1:2379"]
+        dial-timeout: 5s

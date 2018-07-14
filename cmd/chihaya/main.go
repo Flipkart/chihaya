@@ -58,7 +58,7 @@ func (r *Run) Init(ps storage.PeerStore) error {
 		if err != nil {
 			return fmt.Errorf("invalid config for etcdfailover: %v, error: %v", cfg.AvailabilityConfig.Config, err)
 		}
-		em := etcdfailover.NewElectionManager(*efc)
+		em := etcdfailover.NewElectionManager(efc)
 		errChan, stopper, err := em.Run(runnable)
 		if err != nil {
 			return err

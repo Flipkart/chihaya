@@ -12,14 +12,14 @@ var configs []Config
 func init() {
 	configs = make([]Config, 0, 2)
 	configs = append(configs, Config{
-		ElectionPrefix: "/test1-election",
+		ElectionPrefix:     "/test1-election",
 		SessionTimeoutSecs: 5,
-		Logger: getLogger("em1"),
+		logger:             getLogger("em1"),
 	})
 	configs = append(configs, Config{
-		ElectionPrefix: "/test1-election",
+		ElectionPrefix:     "/test1-election",
 		SessionTimeoutSecs: 5,
-		Logger: getLogger("em2"),
+		logger:             getLogger("em2"),
 	})
 }
 
@@ -29,7 +29,6 @@ func TestLeaderSwitchWhenOldLeaderResigns(t *testing.T) {
 	done := make(chan string)
 
 	var s1, s2 func() <-chan error
-	var err error
 
 	//stop elections on method exit
 	defer func() {
@@ -43,23 +42,25 @@ func TestLeaderSwitchWhenOldLeaderResigns(t *testing.T) {
 
 	//start election 1
 	go func() {
+		var err error
 		_, s1, err = em1.Run(func() error {
 			done <- "em1"
 			return nil
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 
 	//start election 2
 	go func() {
+		var err error
 		_, s2, err = em2.Run(func() error {
 			done <- "em2"
 			return nil
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 
@@ -93,7 +94,6 @@ func TestErrorPropagationWhenLeaderRunnableFails(t *testing.T) {
 	done := make(chan string)
 
 	var s1, s2 func() <-chan error
-	var err error
 	var ec1 <-chan error
 
 	defer func() {
@@ -106,13 +106,14 @@ func TestErrorPropagationWhenLeaderRunnableFails(t *testing.T) {
 	}()
 
 	go func() {
+		var err error
 		ec1, s1, err = em1.Run(func() error {
 			done <- "em1"
 			time.Sleep(2 * time.Second)
 			return fmt.Errorf("em1: unexpected error")
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 
@@ -123,12 +124,13 @@ func TestErrorPropagationWhenLeaderRunnableFails(t *testing.T) {
 	}
 
 	go func() {
+		var err error
 		_, s2, err = em2.Run(func() error {
 			done <- "em2"
 			return nil
 		})
 		if err != nil {
-			t.Fatal(err)
+			t.Error(err)
 		}
 	}()
 
