@@ -1,25 +1,25 @@
 package etcdfailover
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"github.com/coreos/etcd/clientv3"
 	"github.com/coreos/etcd/clientv3/concurrency"
-	"context"
 	"sync"
-	"fmt"
 	"time"
-	"errors"
 )
 
 // NOTE
 // Known Issues:
 // 1. 	If etcd cluster becomes unavailable, participants will take 2 * session_timeout_secs to shutdown cleanly
 
-
 type ElectionState string
+
 const (
-	NotParticipant    ElectionState = "NotParticipant"
-	Participant       ElectionState = "Participant"
-	Leader            ElectionState = "Leader"
+	NotParticipant ElectionState = "NotParticipant"
+	Participant    ElectionState = "Participant"
+	Leader         ElectionState = "Leader"
 )
 
 type ElectionManager struct {
@@ -56,9 +56,9 @@ func WithEtcdSession(session *concurrency.Session) ElectionManagerOption {
 func NewElectionManager(provided Config, opts ...ElectionManagerOption) *ElectionManager {
 	cfg := provided.Validate()
 	em := &ElectionManager{
-		cfg:    cfg,
-		cancel: func () {},
-		state:  NotParticipant,
+		cfg:         cfg,
+		cancel:      func() {},
+		state:       NotParticipant,
 		gophersDone: make(chan bool, 1),
 	}
 	for _, opt := range opts {
@@ -80,10 +80,10 @@ func NewElectionManager(provided Config, opts ...ElectionManagerOption) *Electio
 
 func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 	select {
-		case <-time.After(5 * time.Second):
-			return nil, errors.New("election manager in started/unclean state. stop election manager and retry again")
-		case <-em.gophersDone:
-			em.cfg.logger.Debug("Attempting to participate")
+	case <-time.After(5 * time.Second):
+		return nil, errors.New("election manager in started/unclean state. stop election manager and retry again")
+	case <-em.gophersDone:
+		em.cfg.logger.Debug("Attempting to participate")
 	}
 
 	em.mu.Lock()
@@ -192,7 +192,7 @@ func (em *ElectionManager) Run(runnable func() error) (<-chan error, func() <-ch
 	em.cfg.logger.Info("starting election participation")
 	var (
 		electionChan <-chan ElectionState
-		err	error
+		err          error
 	)
 	if electionChan, err = em.Start(); err != nil {
 		em.StopAndLog()
@@ -237,7 +237,7 @@ func (em *ElectionManager) stop() error {
 			em.sessionMonitor = nil
 
 			// wait on resign for at least session timeout to ensure that if resign fails in case of n/w partition or etcd disaster, session has reliably expired
-			cctx, cc := context.WithTimeout(context.Background(), time.Duration(em.cfg.SessionTimeoutSecs) * time.Second)
+			cctx, cc := context.WithTimeout(context.Background(), time.Duration(em.cfg.SessionTimeoutSecs)*time.Second)
 			defer cc()
 			err := em.election.Resign(cctx)
 			if err != nil {

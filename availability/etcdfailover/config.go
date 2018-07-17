@@ -1,19 +1,19 @@
 package etcdfailover
 
 import (
-	"time"
+	"fmt"
 	"github.com/coreos/etcd/clientv3"
 	"go.uber.org/zap"
 	"gopkg.in/yaml.v2"
-	"fmt"
+	"time"
 )
 
 const Name = "etcdfailover"
 
 const (
-	defaultEtcdEndpoint = "127.0.0.1:2379"
-	defaultDialTimeout = 5 * time.Second
-	defaultElectionPrefix = "/tracker-election"
+	defaultEtcdEndpoint       = "127.0.0.1:2379"
+	defaultDialTimeout        = 5 * time.Second
+	defaultElectionPrefix     = "/tracker-election"
 	defaultSessionTimeoutSecs = 30
 )
 
@@ -50,18 +50,18 @@ func (cfg Config) Validate() Config {
 	if len(cfg.ElectionPrefix) == 0 {
 		validcfg.ElectionPrefix = defaultElectionPrefix
 		validcfg.logger.Warnw("falling back to default configuration",
-			"name", Name + ".ElectionPrefix",
+			"name", Name+".ElectionPrefix",
 			"provided", cfg.ElectionPrefix,
-			"default",  validcfg.ElectionPrefix,
+			"default", validcfg.ElectionPrefix,
 		)
 	}
 
 	if cfg.SessionTimeoutSecs <= 0 {
 		validcfg.SessionTimeoutSecs = defaultSessionTimeoutSecs
 		validcfg.logger.Warnw("falling back to default configuration",
-			"name",     Name + ".SessionTimeoutSecs",
+			"name", Name+".SessionTimeoutSecs",
 			"provided", cfg.SessionTimeoutSecs,
-			"default",  validcfg.SessionTimeoutSecs,
+			"default", validcfg.SessionTimeoutSecs,
 		)
 	}
 
@@ -74,18 +74,18 @@ func (cfg Config) ValidateEtcdConfig() Config {
 	if len(cfg.Etcd.Endpoints) == 0 {
 		validcfg.Etcd.Endpoints = []string{defaultEtcdEndpoint}
 		validcfg.logger.Warnw("falling back to default configuration",
-			"name",     Name + ".Etcd",
+			"name", Name+".Etcd",
 			"provided", cfg.Etcd.Endpoints,
-			"default",  validcfg.Etcd.Endpoints,
+			"default", validcfg.Etcd.Endpoints,
 		)
 	}
 
 	if cfg.Etcd.DialTimeout <= 0 {
 		validcfg.Etcd.DialTimeout = defaultDialTimeout
 		validcfg.logger.Warnw("falling back to default configuration",
-			"name",     Name + ".Etcd",
+			"name", Name+".Etcd",
 			"provided", cfg.Etcd.DialTimeout,
-			"default",  validcfg.Etcd.DialTimeout,
+			"default", validcfg.Etcd.DialTimeout,
 		)
 	}
 

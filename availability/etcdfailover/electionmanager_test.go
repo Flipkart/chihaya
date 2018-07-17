@@ -1,14 +1,15 @@
 package etcdfailover
 
 import (
-	"testing"
 	"fmt"
 	"go.uber.org/zap"
 	"log"
+	"testing"
 	"time"
 )
 
 var configs []Config
+
 func init() {
 	configs = make([]Config, 0, 2)
 	configs = append(configs, Config{
@@ -149,7 +150,6 @@ func TestErrorPropagationWhenLeaderRunnableFails(t *testing.T) {
 	}
 	em2.StopAndLog()
 }
-
 
 func waitForLeader(t *testing.T, done <-chan string) string {
 	l := <-done

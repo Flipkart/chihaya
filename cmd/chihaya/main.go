@@ -12,6 +12,8 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
+	"fmt"
+	"github.com/Flipkart/chihaya/availability/etcdfailover"
 	"github.com/Flipkart/chihaya/frontend/http"
 	"github.com/Flipkart/chihaya/frontend/udp"
 	"github.com/Flipkart/chihaya/middleware"
@@ -19,8 +21,6 @@ import (
 	"github.com/Flipkart/chihaya/pkg/prometheus"
 	"github.com/Flipkart/chihaya/pkg/stop"
 	"github.com/Flipkart/chihaya/storage"
-	"github.com/Flipkart/chihaya/availability/etcdfailover"
-	"fmt"
 )
 
 // Run represents the state of a running instance of Chihaya.
@@ -176,7 +176,6 @@ func RunCmdFunc(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
-
 
 	log.Debug("attaching signal handlers")
 	quit := make(chan os.Signal)
