@@ -7,6 +7,7 @@ import (
 	"sync"
 	"fmt"
 	"time"
+	"errors"
 )
 
 // NOTE
@@ -29,10 +30,13 @@ type ElectionManager struct {
 	sessionCreated bool
 	election       *concurrency.Election
 	cancel         context.CancelFunc
-	mu             sync.Mutex
 	state          ElectionState
 	evtChan        chan ElectionState
-	sessionExpiryMonitor	chan bool
+
+	sessionMonitor chan bool
+	mu             sync.Mutex
+	wg             sync.WaitGroup
+	gophersDone    chan bool
 }
 
 type ElectionManagerOption func(*ElectionManager)
@@ -55,6 +59,7 @@ func NewElectionManager(provided Config, opts ...ElectionManagerOption) *Electio
 		cfg:    cfg,
 		cancel: func () {},
 		state:  NotParticipant,
+		gophersDone: make(chan bool, 1),
 	}
 	for _, opt := range opts {
 		opt(em)
@@ -68,15 +73,25 @@ func NewElectionManager(provided Config, opts ...ElectionManagerOption) *Electio
 		em.cfg = em.cfg.ValidateEtcdConfig()
 	}
 
+	//to ensure that start proceeds when called for first time
+	close(em.gophersDone)
 	return em
 }
 
 func (em *ElectionManager) Start() (<-chan ElectionState, error) {
+	select {
+		case <-time.After(5 * time.Second):
+			return nil, errors.New("election manager in started/unclean state. stop election manager and retry again")
+		case <-em.gophersDone:
+			em.cfg.logger.Debug("Attempting to participate")
+	}
+
 	em.mu.Lock()
 	defer em.mu.Unlock()
 
 	if em.state == NotParticipant {
 		em.evtChan = make(chan ElectionState, 1)
+		em.gophersDone = make(chan bool, 1)
 		var err error
 		//ensure consecutive start-ups don't happen
 		defer func() {
@@ -106,11 +121,13 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 		var cctx context.Context
 		cctx, em.cancel = context.WithCancel(context.Background())
 
-		em.sessionExpiryMonitor = make(chan bool)
+		em.sessionMonitor = make(chan bool)
+		em.wg.Add(1)
 		go func() {
+			defer em.wg.Done()
 			em.cfg.logger.Debug("observing etcd session expiry")
 			select {
-			case <-em.sessionExpiryMonitor:
+			case <-em.sessionMonitor:
 				em.cfg.logger.Debug("stopping monitoring of session expiry")
 			case <-em.session.Done():
 				em.cfg.logger.Error("etcd session expired")
@@ -118,7 +135,9 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 			}
 		}()
 
+		em.wg.Add(1)
 		go func() {
+			defer em.wg.Done()
 			em.cfg.logger.Debug("starting election campaign")
 			if err := em.election.Campaign(cctx, ""); err != nil {
 				if err != context.Canceled {
@@ -134,6 +153,11 @@ func (em *ElectionManager) Start() (<-chan ElectionState, error) {
 				em.mu.Unlock()
 			}
 			em.cfg.logger.Debug("stopped election campaign")
+		}()
+
+		go func() {
+			em.wg.Wait()
+			close(em.gophersDone)
 		}()
 
 		return em.evtChan, nil
@@ -209,8 +233,8 @@ func (em *ElectionManager) stop() error {
 		// check for nil on election, session and cli because its possible that `ElectionManager.Start()` failed somewhere in between
 		if em.election != nil {
 			em.cfg.logger.Debug("resigning from election")
-			close(em.sessionExpiryMonitor)
-			em.sessionExpiryMonitor = nil
+			close(em.sessionMonitor)
+			em.sessionMonitor = nil
 
 			// wait on resign for at least session timeout to ensure that if resign fails in case of n/w partition or etcd disaster, session has reliably expired
 			cctx, cc := context.WithTimeout(context.Background(), time.Duration(em.cfg.SessionTimeoutSecs) * time.Second)
