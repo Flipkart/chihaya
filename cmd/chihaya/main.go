@@ -12,13 +12,15 @@ import (
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 
-	"github.com/chihaya/chihaya/frontend/http"
-	"github.com/chihaya/chihaya/frontend/udp"
-	"github.com/chihaya/chihaya/middleware"
-	"github.com/chihaya/chihaya/pkg/log"
-	"github.com/chihaya/chihaya/pkg/prometheus"
-	"github.com/chihaya/chihaya/pkg/stop"
-	"github.com/chihaya/chihaya/storage"
+	"fmt"
+	"github.com/Flipkart/chihaya/availability/etcdfailover"
+	"github.com/Flipkart/chihaya/frontend/http"
+	"github.com/Flipkart/chihaya/frontend/udp"
+	"github.com/Flipkart/chihaya/middleware"
+	"github.com/Flipkart/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/prometheus"
+	"github.com/Flipkart/chihaya/pkg/stop"
+	"github.com/Flipkart/chihaya/storage"
 )
 
 // Run represents the state of a running instance of Chihaya.
@@ -35,24 +37,53 @@ func NewRun(configFilePath string) (*Run, error) {
 		configFilePath: configFilePath,
 	}
 
-	return r, r.Start(nil)
+	return r, r.Init(nil)
 }
 
-// Start begins an instance of Chihaya.
-// It is optional to provide an instance of the peer store to avoid the
-// creation of a new one.
-func (r *Run) Start(ps storage.PeerStore) error {
+func (r *Run) Init(ps storage.PeerStore) error {
 	configFile, err := ParseConfigFile(r.configFilePath)
 	if err != nil {
 		return errors.New("failed to read config: " + err.Error())
 	}
 	cfg := configFile.Chihaya
-
 	r.sg = stop.NewGroup()
 
+	runnable := func() error {
+		return r.Start(cfg, ps)
+	}
+
+	switch cfg.AvailabilityConfig.Name {
+	case "etcdfailover":
+		efc, err := etcdfailover.NewConfig(cfg.AvailabilityConfig.Config, nil)
+		if err != nil {
+			return fmt.Errorf("invalid config for etcdfailover: %v, error: %v", cfg.AvailabilityConfig.Config, err)
+		}
+		em := etcdfailover.NewElectionManager(efc)
+		errChan, stopper, err := em.Run(runnable)
+		if err != nil {
+			return err
+		}
+		r.sg.AddFunc(stopper)
+		go func() {
+			err := <-errChan
+			log.Error(fmt.Sprintf("%v: sending sigint to self", err))
+			syscall.Kill(syscall.Getpid(), syscall.SIGINT)
+		}()
+	default:
+		return runnable()
+	}
+
+	return nil
+}
+
+// Start begins an instance of Chihaya.
+// It is optional to provide an instance of the peer store to avoid the
+// creation of a new one.
+func (r *Run) Start(cfg Config, ps storage.PeerStore) error {
 	log.Info("starting Prometheus server", log.Fields{"addr": cfg.PrometheusAddr})
 	r.sg.Add(prometheus.NewServer(cfg.PrometheusAddr))
 
+	var err error
 	if ps == nil {
 		log.Info("starting storage", log.Fields{"name": cfg.Storage.Name})
 		ps, err = storage.NewPeerStore(cfg.Storage.Name, cfg.Storage.Config)
@@ -110,17 +141,19 @@ func combineErrors(prefix string, errs []error) error {
 
 // Stop shuts down an instance of Chihaya.
 func (r *Run) Stop(keepPeerStore bool) (storage.PeerStore, error) {
-	log.Debug("stopping frontends and prometheus endpoint")
+	log.Debug("stopping availability manager, frontends and prometheus endpoint")
 	if errs := r.sg.Stop(); len(errs) != 0 {
 		return nil, combineErrors("failed while shutting down frontends", errs)
 	}
 
-	log.Debug("stopping logic")
-	if errs := r.logic.Stop(); len(errs) != 0 {
-		return nil, combineErrors("failed while shutting down middleware", errs)
+	if r.logic != nil {
+		log.Debug("stopping logic")
+		if errs := r.logic.Stop(); len(errs) != 0 {
+			return nil, combineErrors("failed while shutting down middleware", errs)
+		}
 	}
 
-	if !keepPeerStore {
+	if !keepPeerStore && r.peerStore != nil {
 		log.Debug("stopping peer store")
 		if err, closed := <-r.peerStore.Stop(); !closed {
 			return nil, err
@@ -144,6 +177,7 @@ func RunCmdFunc(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	log.Debug("attaching signal handlers")
 	quit := make(chan os.Signal)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
@@ -158,7 +192,7 @@ func RunCmdFunc(cmd *cobra.Command, args []string) error {
 				return err
 			}
 
-			if err := r.Start(peerStore); err != nil {
+			if err := r.Init(peerStore); err != nil {
 				return err
 			}
 		case <-quit:

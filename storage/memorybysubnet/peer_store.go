@@ -12,10 +12,10 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/chihaya/chihaya/bittorrent"
-	"github.com/chihaya/chihaya/pkg/log"
-	"github.com/chihaya/chihaya/pkg/timecache"
-	"github.com/chihaya/chihaya/storage"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/timecache"
+	"github.com/Flipkart/chihaya/storage"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.

@@ -11,7 +11,7 @@ import (
 	"github.com/anacrolix/torrent/tracker"
 	"github.com/pkg/errors"
 
-	"github.com/chihaya/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/bittorrent"
 )
 
 func init() {

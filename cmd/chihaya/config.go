@@ -7,21 +7,28 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/chihaya/chihaya/frontend/http"
-	"github.com/chihaya/chihaya/frontend/udp"
-	"github.com/chihaya/chihaya/middleware"
+	"github.com/Flipkart/chihaya/frontend/http"
+	"github.com/Flipkart/chihaya/frontend/udp"
+	"github.com/Flipkart/chihaya/middleware"
 
 	// Imported to register as middleware drivers.
-	_ "github.com/chihaya/chihaya/middleware/clientapproval"
-	_ "github.com/chihaya/chihaya/middleware/jwt"
-	_ "github.com/chihaya/chihaya/middleware/varinterval"
+	_ "github.com/Flipkart/chihaya/middleware/clientapproval"
+	_ "github.com/Flipkart/chihaya/middleware/jwt"
+	_ "github.com/Flipkart/chihaya/middleware/varinterval"
 
 	// Imported to register as storage drivers.
-	_ "github.com/chihaya/chihaya/storage/memory"
-	_ "github.com/chihaya/chihaya/storage/memorybysubnet"
+	_ "github.com/Flipkart/chihaya/storage/memetcd"
+	_ "github.com/Flipkart/chihaya/storage/memory"
+	_ "github.com/Flipkart/chihaya/storage/memorybysubnet"
+	_ "github.com/Flipkart/chihaya/storage/memetcd"
 )
 
 type storageConfig struct {
+	Name   string      `yaml:"name"`
+	Config interface{} `yaml:"config"`
+}
+
+type availabilityConfig struct {
 	Name   string      `yaml:"name"`
 	Config interface{} `yaml:"config"`
 }
@@ -35,6 +42,7 @@ type Config struct {
 	Storage                   storageConfig           `yaml:"storage"`
 	PreHooks                  []middleware.HookConfig `yaml:"prehooks"`
 	PostHooks                 []middleware.HookConfig `yaml:"posthooks"`
+	AvailabilityConfig        availabilityConfig      `yaml:"availability"`
 }
 
 // PreHookNames returns only the names of the configured middleware.

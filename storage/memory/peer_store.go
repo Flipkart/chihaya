@@ -11,10 +11,10 @@ import (
 
 	"gopkg.in/yaml.v2"
 
-	"github.com/chihaya/chihaya/bittorrent"
-	"github.com/chihaya/chihaya/pkg/log"
-	"github.com/chihaya/chihaya/pkg/timecache"
-	"github.com/chihaya/chihaya/storage"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/pkg/log"
+	"github.com/Flipkart/chihaya/pkg/timecache"
+	"github.com/Flipkart/chihaya/storage"
 )
 
 // Name is the name by which this peer store is registered with Chihaya.
@@ -167,6 +167,28 @@ func New(provided Config) (storage.PeerStore, error) {
 	return ps, nil
 }
 
+// Initializes peer store with existing announces
+// Useful when building durable peer stores
+func NewWithAnnounces(provided Config, announces []Announce) (storage.PeerStore, error) {
+	ps, err := New(provided)
+	if err != nil {
+		return nil, err
+	}
+	//return ps, nil
+	mps, ok := ps.(*peerStore)
+	if !ok {
+		panic("Unexpected error, memory store not implementing storage.Peerstore")
+	}
+	if err := mps.bootstrap(announces...); err != nil {
+		return nil, err
+	}
+	return mps, nil
+}
+
+func NewAnnounce(ih *bittorrent.InfoHash, pk []byte, seeder bool, clock int64) Announce {
+	return Announce{ih, pk, seeder, clock}
+}
+
 type serializedPeer string
 
 func newPeerKey(p bittorrent.Peer) serializedPeer {
@@ -194,6 +216,13 @@ func decodePeerKey(pk serializedPeer) bittorrent.Peer {
 	}
 
 	return peer
+}
+
+type Announce struct {
+	ih     *bittorrent.InfoHash
+	pk     []byte
+	seeder bool
+	clock  int64
 }
 
 type peerShard struct {
@@ -505,6 +534,46 @@ func (ps *peerStore) ScrapeSwarm(ih bittorrent.InfoHash, addressFamily bittorren
 	shard.RUnlock()
 
 	return
+}
+
+// loads announces in-memory
+func (ps *peerStore) bootstrap(announces ...Announce) error {
+	cutoff := time.Now().Add(-ps.cfg.PeerLifetime).UnixNano()
+	for _, a := range announces {
+		// Ignore expired announces
+		if a.clock <= cutoff {
+			continue
+		}
+
+		pk := serializedPeer(a.pk)
+		ih := *a.ih
+		p := decodePeerKey(pk)
+		shard := ps.shards[ps.shardIndex(ih, p.IP.AddressFamily)]
+
+		if _, ok := shard.swarms[ih]; !ok {
+			shard.swarms[ih] = swarm{
+				seeders:  make(map[serializedPeer]int64),
+				leechers: make(map[serializedPeer]int64),
+			}
+		}
+
+		if a.seeder {
+			if _, ok := shard.swarms[ih].seeders[pk]; !ok {
+				shard.numSeeders++
+			}
+			shard.swarms[ih].seeders[pk] = a.clock
+		} else {
+			if _, ok := shard.swarms[ih].leechers[pk]; !ok {
+				shard.numLeechers++
+			}
+			shard.swarms[ih].leechers[pk] = a.clock
+		}
+	}
+
+	// Garbage collect peers that are timed out already and publish metrics
+	ps.collectGarbage(time.Now().Add(-ps.cfg.PeerLifetime))
+	ps.populateProm()
+	return nil
 }
 
 // collectGarbage deletes all Peers from the PeerStore which are older than the

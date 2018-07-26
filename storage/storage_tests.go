@@ -6,7 +6,8 @@ import (
 
 	"github.com/stretchr/testify/require"
 
-	"github.com/chihaya/chihaya/bittorrent"
+	"github.com/Flipkart/chihaya/bittorrent"
+	"time"
 )
 
 // PeerEqualityFunc is the boolean function to use to check two Peers for
@@ -151,6 +152,97 @@ func TestPeerStore(t *testing.T, p PeerStore) {
 
 	e := p.Stop()
 	require.Nil(t, <-e)
+}
+
+func TestPeerStoreDurability(t *testing.T, peerLifetime time.Duration, peerStoreFactory func() PeerStore) {
+	testData := []struct {
+		ih   bittorrent.InfoHash
+		peer bittorrent.Peer
+	}{
+		{
+			bittorrent.InfoHashFromString("00000000000000000001"),
+			bittorrent.Peer{ID: bittorrent.PeerIDFromString("00000000000000000001"), Port: 1, IP: bittorrent.IP{IP: net.ParseIP("1.1.1.1").To4(), AddressFamily: bittorrent.IPv4}},
+		},
+		{
+			bittorrent.InfoHashFromString("00000000000000000002"),
+			bittorrent.Peer{ID: bittorrent.PeerIDFromString("00000000000000000002"), Port: 2, IP: bittorrent.IP{IP: net.ParseIP("abab::0001"), AddressFamily: bittorrent.IPv6}},
+		},
+	}
+
+	v4Peer := bittorrent.Peer{ID: bittorrent.PeerIDFromString("99999999999999999994"), IP: bittorrent.IP{IP: net.ParseIP("99.99.99.99").To4(), AddressFamily: bittorrent.IPv4}, Port: 9994}
+	v6Peer := bittorrent.Peer{ID: bittorrent.PeerIDFromString("99999999999999999996"), IP: bittorrent.IP{IP: net.ParseIP("fc00::0001"), AddressFamily: bittorrent.IPv6}, Port: 9996}
+
+	p := peerStoreFactory()
+	for _, c := range testData {
+		peer := v4Peer
+		if c.peer.IP.AddressFamily == bittorrent.IPv6 {
+			peer = v6Peer
+		}
+
+		// Add two leechers, test announce and scrape response
+		err := p.PutLeecher(c.ih, peer)
+		require.Nil(t, err)
+		err = p.PutLeecher(c.ih, c.peer)
+		require.Nil(t, err)
+		peers, err := p.AnnouncePeers(c.ih, false, 50, peer)
+		require.Nil(t, err)
+		require.True(t, containsPeer(peers, c.peer))
+		scrape := p.ScrapeSwarm(c.ih, c.peer.IP.AddressFamily)
+		require.Equal(t, uint32(2), scrape.Incomplete)
+		require.Equal(t, uint32(0), scrape.Complete)
+	}
+	e := p.Stop()
+	require.Nil(t, <-e)
+
+	// Immediately respawn a new peer store so that existing announces don't timeout
+	p = peerStoreFactory()
+	for _, c := range testData {
+		peer := v4Peer
+		if c.peer.IP.AddressFamily == bittorrent.IPv6 {
+			peer = v6Peer
+		}
+
+		// Verify existing announces are loaded by testing announce and scrape response
+		peers, err := p.AnnouncePeers(c.ih, false, 50, peer)
+		require.Nil(t, err)
+		require.True(t, containsPeer(peers, c.peer))
+		scrape := p.ScrapeSwarm(c.ih, c.peer.IP.AddressFamily)
+		require.Equal(t, uint32(2), scrape.Incomplete)
+		require.Equal(t, uint32(0), scrape.Complete)
+
+		// Graduate a leecher to seeder, test announce and scrape response
+		err = p.GraduateLeecher(c.ih, c.peer)
+		require.Nil(t, err)
+		peers, err = p.AnnouncePeers(c.ih, false, 50, peer)
+		require.Nil(t, err)
+		require.True(t, containsPeer(peers, c.peer))
+		scrape = p.ScrapeSwarm(c.ih, c.peer.IP.AddressFamily)
+		require.Equal(t, uint32(1), scrape.Incomplete)
+		require.Equal(t, uint32(1), scrape.Complete)
+	}
+	e = p.Stop()
+	require.Nil(t, <-e)
+
+	// Respawn peer store after peer lifetime duration to ensure existing announces have timed out
+	time.Sleep(peerLifetime + (2 * time.Second))
+	p = peerStoreFactory()
+	for _, c := range testData {
+		peer := v4Peer
+		if c.peer.IP.AddressFamily == bittorrent.IPv6 {
+			peer = v6Peer
+		}
+
+		// Verify all existing announces have timed out
+		_, err := p.AnnouncePeers(c.ih, false, 50, peer)
+		require.Equal(t, ErrResourceDoesNotExist, err)
+		scrape := p.ScrapeSwarm(c.ih, c.peer.IP.AddressFamily)
+		require.Equal(t, uint32(0), scrape.Complete)
+		require.Equal(t, uint32(0), scrape.Incomplete)
+		require.Equal(t, uint32(0), scrape.Snatches)
+	}
+	e = p.Stop()
+	require.Nil(t, <-e)
+
 }
 
 func containsPeer(peers []bittorrent.Peer, p bittorrent.Peer) bool {
