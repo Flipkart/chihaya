@@ -177,6 +177,7 @@ func (f *Frontend) Stop() <-chan error {
 
 func (f *Frontend) handler() http.Handler {
 	router := httprouter.New()
+	router.GET("/health", f.healthRoute)
 	router.GET("/announce", f.announceRoute)
 	router.GET("/scrape", f.scrapeRoute)
 
@@ -209,6 +210,11 @@ func (f *Frontend) listenAndServe() error {
 	}
 
 	return nil
+}
+
+//healthRoute responds with 200 if service is available
+func (f *Frontend) healthRoute(w http.ResponseWriter, r *http.Request, _ httprouter.Params) {
+	w.WriteHeader(200)
 }
 
 // announceRoute parses and responds to an Announce.
