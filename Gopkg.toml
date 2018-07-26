@@ -20,6 +20,9 @@
 #  name = "github.com/x/y"
 #  version = "2.4.0"
 
+[[constraint]]
+  name = "github.com/chihaya/chihaya"
+  revision = "1f7ea581978bdd0d7a7fabd4453b3d4b72dae853"
 
 [[constraint]]
   name = "github.com/SermoDigital/jose"
