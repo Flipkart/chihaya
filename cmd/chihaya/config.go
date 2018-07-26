@@ -20,9 +20,15 @@ import (
 	_ "github.com/Flipkart/chihaya/storage/memetcd"
 	_ "github.com/Flipkart/chihaya/storage/memory"
 	_ "github.com/Flipkart/chihaya/storage/memorybysubnet"
+	_ "github.com/Flipkart/chihaya/storage/memetcd"
 )
 
 type storageConfig struct {
+	Name   string      `yaml:"name"`
+	Config interface{} `yaml:"config"`
+}
+
+type availabilityConfig struct {
 	Name   string      `yaml:"name"`
 	Config interface{} `yaml:"config"`
 }
@@ -36,6 +42,7 @@ type Config struct {
 	Storage                   storageConfig           `yaml:"storage"`
 	PreHooks                  []middleware.HookConfig `yaml:"prehooks"`
 	PostHooks                 []middleware.HookConfig `yaml:"posthooks"`
+	AvailabilityConfig        availabilityConfig      `yaml:"availability"`
 }
 
 // PreHookNames returns only the names of the configured middleware.
