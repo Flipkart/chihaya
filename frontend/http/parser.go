@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 
@@ -138,6 +139,10 @@ func ParseScrape(r *http.Request, opts ParseOptions) (*bittorrent.ScrapeRequest,
 
 // requestedIP determines the IP address for a BitTorrent client request.
 func requestedIP(r *http.Request, p bittorrent.Params, opts ParseOptions) (ip net.IP, provided bool) {
+	fmt.Println("===== Request Headers Begins =====")
+	fmt.Println(r.Header)
+	fmt.Println("===== Request Headers Ends  =====")
+
 	if opts.AllowIPSpoofing {
 		if ipstr, ok := p.String("ip"); ok {
 			return net.ParseIP(ipstr), true
