@@ -2,8 +2,6 @@ package bittorrent
 
 import (
 	"net"
-
-	"github.com/Flipkart/chihaya/pkg/log"
 )
 
 // ErrInvalidIP indicates an invalid IP for an Announce.
@@ -34,10 +32,10 @@ func SanitizeAnnounce(r *AnnounceRequest, maxNumWant, defaultNumWant uint32) err
 		return ErrInvalidIP
 	}
 
-	log.Debug("sanitized announce", r, log.Fields{
-		"maxNumWant":     maxNumWant,
-		"defaultNumWant": defaultNumWant,
-	})
+	//log.Debug("sanitized announce", r, log.Fields{
+	//"maxNumWant":     maxNumWant,
+	//"defaultNumWant": defaultNumWant,
+	//})
 	return nil
 }
 
@@ -48,8 +46,8 @@ func SanitizeScrape(r *ScrapeRequest, maxScrapeInfoHashes uint32) error {
 		r.InfoHashes = r.InfoHashes[:maxScrapeInfoHashes]
 	}
 
-	log.Debug("sanitized scrape", r, log.Fields{
-		"maxScrapeInfoHashes": maxScrapeInfoHashes,
-	})
+	//log.Debug("sanitized scrape", r, log.Fields{
+	//"maxScrapeInfoHashes": maxScrapeInfoHashes,
+	//})
 	return nil
 }

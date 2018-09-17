@@ -59,7 +59,10 @@ func (l *Logic) HandleAnnounce(ctx context.Context, req *bittorrent.AnnounceRequ
 		}
 	}
 
-	log.Debug("generated announce response", resp)
+	log.Debug("generated announce response", log.Fields{
+		"req":  req.LogFields(),
+		"resp": resp.LogFields(),
+	})
 	return ctx, resp, nil
 }
 
@@ -86,7 +89,10 @@ func (l *Logic) HandleScrape(ctx context.Context, req *bittorrent.ScrapeRequest)
 		}
 	}
 
-	log.Debug("generated scrape response", resp)
+	log.Debug("generated scrape response", log.Fields{
+		"req":  req.LogFields(),
+		"resp": resp.LogFields(),
+	})
 	return ctx, resp, nil
 }
 

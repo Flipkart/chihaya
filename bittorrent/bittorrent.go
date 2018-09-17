@@ -4,6 +4,7 @@
 package bittorrent
 
 import (
+	"encoding/hex"
 	"fmt"
 	"net"
 	"time"
@@ -87,6 +88,26 @@ func (i InfoHash) String() string {
 // RawString returns a 20-byte string of the raw bytes of the InfoHash.
 func (i InfoHash) RawString() string {
 	return string(i[:])
+}
+
+// MarshalText implements encoding.TextMarshaler, returning the base16 encoded InfoHash.
+func (i InfoHash) MarshalText() ([]byte, error) {
+	dst := make([]byte, hex.EncodedLen(len(i)))
+	hex.Encode(dst, i[:])
+	return dst, nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler, decoding the base16 encoded InfoHash.
+func (i *InfoHash) UnmarshalText(b []byte) error {
+	var dst InfoHash
+	if len(dst) != hex.DecodedLen(len(b)) {
+		return fmt.Errorf("length of infohash not equal to %d", len(dst))
+	}
+	if _, err := hex.Decode(dst[:], b); err != nil {
+		return err
+	}
+	*i = dst
+	return nil
 }
 
 // AnnounceRequest represents the parsed parameters from an announce request.
