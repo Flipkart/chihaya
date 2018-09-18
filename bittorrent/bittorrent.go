@@ -51,6 +51,20 @@ func PeerIDFromString(s string) PeerID {
 	return PeerID(buf)
 }
 
+// MarshalText implements encoding.TextMarshaler.
+func (p PeerID) MarshalText() ([]byte, error) {
+	return p[:], nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler.
+func (p *PeerID) UnmarshalText(b []byte) error {
+	if len(b) != len(p) {
+		fmt.Errorf("length of peer_id not equal to %d", len(p))
+	}
+	copy(p[:], b)
+	return nil
+}
+
 // InfoHash represents an infohash.
 type InfoHash [20]byte
 
