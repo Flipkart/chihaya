@@ -1,0 +1,8 @@
+version=2
+# rules priority are in increasing of lines
+
+# lowest priority if no rule matches, store it in raw format.
+rule=raw:%msg:rest%
+
+# store json structured logs
+rule=json:%.:json%
