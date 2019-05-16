@@ -82,12 +82,12 @@ func testWithInfohash(infoHash [20]byte, url string) error {
 		Left:       100,
 		Uploaded:   50,
 		Event:      tracker.Started,
-		IPAddress:  int32(50<<24 | 10<<16 | 12<<8 | 1),
+		IPAddress:  uint32(50<<24 | 10<<16 | 12<<8 | 1),
 		NumWant:    50,
 		Port:       10001,
 	}
 
-	resp, err := tracker.Announce(&http.Client{}, "ekop", url, &req)
+	resp, err := tracker.Announce{HttpClient: &http.Client{}, UserAgent: "ekop", TrackerUrl:url, Request:req}.Do()
 	if err != nil {
 		return errors.Wrap(err, "announce failed")
 	}
@@ -105,12 +105,12 @@ func testWithInfohash(infoHash [20]byte, url string) error {
 		Left:       100,
 		Uploaded:   50,
 		Event:      tracker.Started,
-		IPAddress:  int32(50<<24 | 10<<16 | 12<<8 | 2),
+		IPAddress:  uint32(50<<24 | 10<<16 | 12<<8 | 2),
 		NumWant:    50,
 		Port:       10002,
 	}
 
-	resp, err = tracker.Announce(&http.Client{}, "ekop", url, &req)
+	resp, err = tracker.Announce{HttpClient: &http.Client{}, UserAgent: "ekop", TrackerUrl:url, Request:req}.Do()
 	if err != nil {
 		return errors.Wrap(err, "announce failed")
 	}
